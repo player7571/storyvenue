@@ -8,7 +8,7 @@
 - 앱은 Supabase Auth 로 로그인한다.
 - 서버는 인증된 사용자 기준으로 요청을 처리한다.
 - OpenAI API key 는 서버 환경변수에만 저장한다.
-- 현재 `/sessions`, `/messages`, `/voice/turn`, `/memory/extract` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- 현재 `/sessions`, `/messages`, `/voice/turn`, `/memory/extract`, `/chapters/generate` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ---
 
@@ -188,19 +188,33 @@ Response example:
 
 ## POST /chapters/generate
 설명:
-- memory item 묶음을 바탕으로 chapter draft 생성
+- 특정 세션 또는 memory item 묶음을 바탕으로 chapter draft 생성
+- 현재 구현은 `X-User-Id` header 가 필요하다.
+- 요청 본문은 `session_id` 또는 `memory_item_ids` 중 하나만 포함해야 한다.
+- 현재 generation 은 OpenAI Structured Outputs 기반 Pydantic schema 파싱을 사용한다.
+- chapter title 1개와 자연스러운 회고형 본문을 생성한 뒤 `chapter_drafts` 에 저장한다.
 
 Request example:
 {
-  "session_id": "session_uuid",
-  "chapter_type": "childhood"
+  "chapter_type": "childhood",
+  "session_id": "session_uuid"
+}
+
+또는
+{
+  "chapter_type": "childhood",
+  "memory_item_ids": ["memory_uuid_1", "memory_uuid_2"]
 }
 
 Response example:
 {
   "chapter_id": "chapter_uuid",
+  "session_id": "session_uuid",
+  "chapter_type": "childhood",
   "title": "어린 시절",
-  "content": "어린 시절의 여름은 언제나 할머니 댁과 함께 떠오른다..."
+  "content": "초등학교 시절의 여름은 할머니 댁의 풍경과 함께 가장 먼저 떠오른다...\n\n그 시절의 기억은 과장되지 않은 따뜻함으로 남아 있다...",
+  "version_no": 1,
+  "created_at": "2026-03-25T10:20:00Z"
 }
 
 ---
