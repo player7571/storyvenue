@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health` 와 Android placeholder 화면 5개가 연결된 최소 실행 단계다.
+현재는 FastAPI `/health`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -15,6 +15,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - 실시간 speech-to-speech 는 MVP에서 제외
 - Milestone 1 server 범위는 실행 가능한 FastAPI 앱과 `GET /health` 까지만 구현한다.
 - Milestone 1 app 범위는 접근성 우선 placeholder 화면과 단순 navigation 까지만 구현한다.
+- server 의 Supabase 연결은 `.env` 기반 설정 모듈과 최소 클라이언트 초기화 코드로 분리한다.
 
 ## Done
 - 프로젝트 문서 초안 작성
@@ -26,6 +27,10 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `GET /health` 엔드포인트 확인
 - `server/requirements.txt` 정리
 - 서버 import 확인 및 `/health` smoke test 통과
+- `server/.env.example` 추가
+- Supabase 설정 모듈(`app.core.config`) 추가
+- Supabase 최소 클라이언트 초기화 모듈(`app.db.supabase`) 추가
+- 설정 import 및 Supabase 클라이언트 초기화 확인
 - Android app 기본 프로젝트 구조 생성
 - Login, Home, Voice Interview, Draft, Book Preview placeholder 화면 추가
 - Compose 기반 단일 Activity 와 navigation 구조 추가
@@ -37,6 +42,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 ## Remaining issues
 - Supabase 스키마와 인증은 아직 구현되지 않았다.
 - 음성 업로드, STT, TTS, safety 관련 API는 아직 없다.
+- DB 접근용 repository/service 계층은 아직 없다.
 - 앱 화면은 모두 placeholder 이며 실제 데이터 연결이 없다.
 
 ## Next
@@ -61,16 +67,25 @@ app 검증:
 - Kotlin 컴파일 확인: `./gradlew :app:compileDebugKotlin`
 - Debug 빌드 확인: `./gradlew :app:assembleDebug` 성공
 
+server .env 항목:
+- `APP_ENV=local`
+- `SUPABASE_URL=https://your-project-ref.supabase.co`
+- `SUPABASE_ANON_KEY=your_supabase_anon_key`
+- `SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key`
+
 server 실행:
 1. `cd server`
-2. `python3 -m venv .venv`
-3. `source .venv/bin/activate`
-4. `pip install -r requirements.txt`
-5. `uvicorn app.main:app --reload`
-6. `curl http://127.0.0.1:8000/health`
+2. `.env.example` 을 참고해 `.env` 작성
+3. `python3 -m venv .venv`
+4. `source .venv/bin/activate`
+5. `pip install -r requirements.txt`
+6. `uvicorn app.main:app --reload`
+7. `curl http://127.0.0.1:8000/health`
 
 server 검증:
 - import 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.main import app; print(app.title)"`
+- 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().app_env)"`
+- Supabase 클라이언트 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.db.supabase import get_supabase_anon_client; print(type(get_supabase_anon_client()).__name__)"`
 - `/health` 응답 확인: `{"status":"ok"}`
 
 ## Device test
@@ -78,6 +93,13 @@ server 검증:
 - Voice Interview 화면의 마이크 권한, 녹음, TTS 를 붙이는 시점부터 실기기 테스트가 필요하다.
 
 ## Changed files
+- `server/requirements.txt`
+- `server/.gitignore`
+- `server/.env.example`
+- `server/app/core/__init__.py`
+- `server/app/core/config.py`
+- `server/app/db/__init__.py`
+- `server/app/db/supabase.py`
 - `app/.gitignore`
 - `app/settings.gradle.kts`
 - `app/build.gradle.kts`
