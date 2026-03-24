@@ -39,7 +39,7 @@ class MessageService:
         try:
             response = (
                 self.client.table("messages")
-                .select("id, role, content, created_at")
+                .select("id, role, content, safety_mode, created_at")
                 .eq("session_id", str(session_id))
                 .eq("user_id", str(user_id))
                 .order("created_at")

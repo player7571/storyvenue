@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` PATCH, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
+현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/safety/check`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` PATCH, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -23,9 +23,11 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/chapters/generate` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/chapters/{chapter_id}` PATCH 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - OpenAI STT key 와 모델 설정은 server `.env` 로만 관리한다.
+- OpenAI safety check 는 Structured Outputs 기반 판단을 우선 사용하고, 실패 시 키워드 fallback 으로 보수적으로 처리한다.
 - OpenAI memory extraction 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
 - OpenAI chapter generation 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
 - chapter 수정은 instruction 기반 revise 와 regenerate 흐름을 분리하고, PATCH 시 기존 row 를 갱신하면서 `version_no` 를 증가시킨다.
+- `/voice/turn` 에서 safety_mode 가 감지되면 일반 인터뷰 질문 대신 짧은 안전 안내 응답을 반환한다.
 - OpenAI TTS 결과는 서버 로컬 mp3 파일로 저장하고 `/generated-audio/...` 경로로 노출한다.
 - Android app 의 `/voice/turn` 연결은 테스트용 서버 주소, 사용자 ID, 세션 ID 입력값으로 동작시킨다.
 
@@ -67,6 +69,13 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - instruction 기반 revise 와 session 기반 regenerate 흐름 분리 추가
 - chapter PATCH 시 기존 row 갱신 + `version_no` 증가 정책 추가
 - `/chapters/{chapter_id}` route smoke test 확인
+- OpenAI safety check service 와 Structured Outputs Pydantic schema 파싱 추가
+- safety check 실패 시 키워드 fallback 검사 추가
+- `POST /safety/check` route 추가
+- `/voice/turn` 에 safety_mode 분기 추가
+- 고위험 발화 시 일반 인터뷰 응답 대신 안전 안내 응답 반환 추가
+- user / assistant 메시지 저장과 조회 응답에 `safety_mode` 표시 추가
+- safety service, `/safety/check`, `/voice/turn` safety branch smoke test 확인
 - OpenAI speech-to-text service 추가
 - `UploadedAudio`, `SpeechToTextResult` 타입 확장
 - `/voice/turn` 기본 STT 를 OpenAI service 로 교체
@@ -100,10 +109,12 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 ## Remaining issues
 - Supabase 스키마와 인증은 아직 구현되지 않았다.
 - `/voice/turn` 의 STT 와 TTS 는 OpenAI 기반이지만 assistant 텍스트 응답 생성은 아직 mock 구현이다.
+- safety 고위험 판단은 현재 명시적 위험 발화 중심이라 완곡한 표현이나 맥락형 발화는 실데이터 튜닝이 더 필요하다.
 - `/memory/extract` 는 OpenAI extraction 실패 시 raw_text 중심 fallback item 을 저장한다.
 - chapter PATCH 는 in-place update 정책이라 이전 버전 본문 자체는 별도 row 로 보존하지 않는다.
 - chapter regenerate 는 현재 `session_id` 가 저장된 chapter draft 에서만 지원한다.
-- `/voice/turn` 는 memory extraction, safety 판별, 오디오 장기 저장 없이 최소 응답만 반환한다.
+- `/voice/turn` 는 memory extraction 과 오디오 장기 저장 없이 최소 응답만 반환한다.
+- safety 위험 발화 원문 최소 저장 정책은 아직 별도 마스킹 없이 transcript 원문 저장 단계다.
 - TTS 파일은 현재 서버 로컬 디스크에 저장되며 만료/정리 정책이 아직 없다.
 - OpenAI TTS voices 는 영어 최적화 기준이라 한국어 음성 품질과 속도는 실기기 테스트가 필요하다.
 - app 의 voice 업로드는 현재 실제 로그인/세션 생성 연동이 없어서 사용자 ID 와 세션 ID 를 수동 입력해야 한다.
@@ -158,6 +169,8 @@ server .env 항목:
 - `OPENAI_MEMORY_PROMPT=optional_memory_prompt`
 - `OPENAI_CHAPTER_MODEL=gpt-4.1-mini`
 - `OPENAI_CHAPTER_PROMPT=optional_chapter_prompt`
+- `OPENAI_SAFETY_MODEL=gpt-4.1-mini`
+- `OPENAI_SAFETY_PROMPT=optional_safety_prompt`
 - `OPENAI_TTS_MODEL=gpt-4o-mini-tts`
 - `OPENAI_TTS_VOICE=coral`
 - `OPENAI_TTS_FORMAT=mp3`
@@ -187,11 +200,13 @@ server 검증:
 - 세션 조회 예시: `curl http://127.0.0.1:8000/sessions/<session_uuid> -H "X-User-Id: <user_uuid>"`
 - 메시지 조회 예시: `curl http://127.0.0.1:8000/messages/<session_uuid> -H "X-User-Id: <user_uuid>"`
 - 음성 턴 예시: `curl -X POST http://127.0.0.1:8000/voice/turn -H "X-User-Id: <user_uuid>" -F "session_id=<session_uuid>" -F "audio_file=@sample.m4a" -F "language_hint=ko"`
+- safety 검사 예시: `curl -X POST http://127.0.0.1:8000/safety/check -H "Content-Type: application/json" -d '{"text":"숨이 너무 차고 가슴이 아파요."}'`
 - memory 추출 예시: `curl -X POST http://127.0.0.1:8000/memory/extract -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"session_id":"<session_uuid>","message_id":"<message_uuid>"}'`
 - chapter 생성 예시: `curl -X POST http://127.0.0.1:8000/chapters/generate -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"chapter_type":"childhood","session_id":"<session_uuid>"}'`
 - chapter 수정 예시: `curl -X PATCH http://127.0.0.1:8000/chapters/<chapter_uuid> -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"instruction":"조금 더 담백하고 차분한 문체로 고쳐줘"}'`
 - chapter 재생성 예시: `curl -X PATCH http://127.0.0.1:8000/chapters/<chapter_uuid> -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"regenerate":true}'`
 - OpenAI STT unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.stt_service import OpenAISpeechToTextService; print(OpenAISpeechToTextService.__name__)"`
+- OpenAI safety check unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.safety_check_service import OpenAISafetyCheckService; print(OpenAISafetyCheckService.__name__)"`
 - OpenAI memory extraction unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.memory_extraction_service import OpenAIMemoryExtractionService; print(OpenAIMemoryExtractionService.__name__)"`
 - OpenAI chapter generation unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.chapter_generation_service import OpenAIChapterGenerationService; print(OpenAIChapterGenerationService.__name__)"`
 - OpenAI chapter revision unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.chapter_revision_service import OpenAIChapterRevisionService; print(OpenAIChapterRevisionService.__name__)"`
@@ -199,15 +214,23 @@ server 검증:
 - route smoke test:
 - `/sessions` dependency override 기반 `POST 201`, `GET 200`, `GET missing 404` 확인
 - `/messages` dependency override 기반 `GET 200`, 빈 세션 `GET 200 []`, 없는 세션 `GET 404` 확인
+- `/safety/check` dependency override 기반 `POST 200`, 빈 text `POST 422` 확인
 - `/memory/extract` dependency override 기반 `POST 200`, message missing `POST 404` 확인
 - `/chapters/generate` dependency override 기반 `POST 200`, source missing `POST 404` 확인
 - `/chapters/{chapter_id}` dependency override 기반 `PATCH 200`, 없는 chapter `PATCH 404` 확인
 - `/voice/turn` dependency override 기반 multipart `POST 200`, 빈 파일 `POST 400`, 없는 세션 `POST 404` 확인
 - OpenAI STT service 는 fake OpenAI client 기반으로 transcript 반환과 빈 입력 예외를 확인
+- OpenAI safety check service 는 fake OpenAI client 기반으로 고위험 structured parse 와 fallback 키워드 경로를 확인
 - OpenAI memory extraction service 는 fake OpenAI client 기반으로 structured parse 결과와 failure 경로를 확인
 - OpenAI chapter generation service 는 fake OpenAI client 기반으로 structured parse 결과와 failure 경로를 확인
 - OpenAI chapter revision service 는 fake OpenAI client 기반으로 structured parse 결과를 확인
 - OpenAI TTS service 는 fake OpenAI client 기반으로 mp3 파일 저장과 URL 반환을 확인
+
+Safety test utterances:
+- `"숨이 너무 차고 가슴이 아파요."` -> `safety_mode=true`, 일반 인터뷰 대신 안전 안내 응답 기대
+- `"쓰러져서 일어날 수 없어요."` -> `safety_mode=true`, 119 또는 주변 도움 요청 안내 기대
+- `"죽고 싶어요. 사는 의미가 없어요."` -> `safety_mode=true`, 인터뷰 중단과 즉시 도움 요청 안내 기대
+- `"초등학교 때 여름마다 할머니 댁에 갔어요."` -> `safety_mode=false`, 일반 인터뷰 질문 응답 기대
 
 ## Device test
 - 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음/업로드 흐름까지 검증했다.
@@ -235,12 +258,14 @@ server 검증:
 - `server/app/api/routes/chapters.py`
 - `server/app/api/routes/memory.py`
 - `server/app/api/routes/messages.py`
+- `server/app/api/routes/safety.py`
 - `server/app/api/routes/sessions.py`
 - `server/app/api/routes/voice.py`
 - `server/app/api/schemas/__init__.py`
 - `server/app/api/schemas/chapter.py`
 - `server/app/api/schemas/memory.py`
 - `server/app/api/schemas/message.py`
+- `server/app/api/schemas/safety.py`
 - `server/app/api/schemas/session.py`
 - `server/app/api/schemas/voice.py`
 - `server/app/services/__init__.py`
@@ -249,6 +274,7 @@ server 검증:
 - `server/app/services/memory_extraction_service.py`
 - `server/app/services/memory_service.py`
 - `server/app/services/message_service.py`
+- `server/app/services/safety_check_service.py`
 - `server/app/services/session_service.py`
 - `server/app/services/stt_service.py`
 - `server/app/services/text_generation_service.py`

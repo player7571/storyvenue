@@ -8,4 +8,5 @@ class MessageResponse(BaseModel):
     id: UUID
     role: str
     content: str
+    safety_mode: bool = False
     created_at: datetime | None = None

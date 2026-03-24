@@ -3,6 +3,11 @@ from fastapi import HTTPException, status
 from app.services.chapter_service import ChapterConfigurationError, ChapterService
 from app.services.memory_service import MemoryConfigurationError, MemoryService
 from app.services.message_service import MessageConfigurationError, MessageService
+from app.services.safety_check_service import (
+    OpenAISafetyCheckService,
+    SafetyCheckConfigurationError,
+    SafetyCheckService,
+)
 from app.services.session_service import SessionConfigurationError, SessionService
 from app.services.voice_turn_service import (
     VoiceTurnConfigurationError,
@@ -27,6 +32,16 @@ def get_message_service() -> MessageService:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Supabase message service is not configured.",
+        ) from exc
+
+
+def get_safety_check_service() -> SafetyCheckService:
+    try:
+        return OpenAISafetyCheckService()
+    except SafetyCheckConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Safety check service is not configured.",
         ) from exc
 
 

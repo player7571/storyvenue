@@ -4,6 +4,7 @@ from app.api.routes.chapters import router as chapters_router
 from app.api.routes.health import router as health_router
 from app.api.routes.memory import router as memory_router
 from app.api.routes.messages import router as messages_router
+from app.api.routes.safety import router as safety_router
 from app.api.routes.sessions import router as sessions_router
 from app.api.routes.voice import router as voice_router
 
@@ -12,5 +13,6 @@ api_router.include_router(chapters_router)
 api_router.include_router(health_router)
 api_router.include_router(memory_router)
 api_router.include_router(messages_router)
+api_router.include_router(safety_router)
 api_router.include_router(sessions_router)
 api_router.include_router(voice_router)

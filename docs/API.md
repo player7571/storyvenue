@@ -66,6 +66,7 @@ Response example:
 - 특정 세션의 메시지 목록 조회
 - 사용자와 assistant 발화를 시간순으로 반환
 - 현재 구현은 `X-User-Id` header 가 필요하다.
+- 각 메시지에는 `safety_mode` 가 포함된다.
 
 Response example:
 [
@@ -73,12 +74,14 @@ Response example:
     "id": "message_1",
     "role": "assistant",
     "content": "안녕하세요. 오늘은 편하게 옛날 이야기를 나눠보겠습니다.",
+    "safety_mode": false,
     "created_at": "2026-03-24T12:01:00Z"
   },
   {
     "id": "message_2",
     "role": "user",
     "content": "어릴 때는 시골에서 살았어요.",
+    "safety_mode": false,
     "created_at": "2026-03-24T12:02:00Z"
   }
 ]
@@ -88,11 +91,13 @@ Response example:
 ## POST /voice/turn
 설명:
 - 음성 입력 한 턴을 처리
-- 서버가 STT -> 사용자 메시지 저장 -> assistant 응답 생성 -> assistant 저장 -> TTS 생성까지 수행
+- 서버가 STT -> safety 검사 -> 사용자 메시지 저장 -> assistant 응답 생성 또는 안전 안내 -> assistant 저장 -> TTS 생성까지 수행
 - 현재 구현은 `X-User-Id` header 가 필요하다.
 - 현재 STT 는 OpenAI speech-to-text service 를 호출한다.
+- safety check 는 OpenAI Structured Outputs 기반 판단을 우선 사용하고, 실패 시 키워드 fallback 을 사용한다.
 - 현재 assistant 텍스트 응답 생성은 mock service 기반이다.
 - 현재 TTS 는 OpenAI text-to-speech service 를 호출하고 mp3 파일을 서버 로컬에 저장한 뒤 `/generated-audio/...` 경로를 반환한다.
+- 고위험 발화가 감지되면 일반 인터뷰 질문 대신 짧은 안전 안내 응답을 반환한다.
 - 현재 `memory_items_created` 는 항상 `0` 이다.
 
 Request:
@@ -109,12 +114,14 @@ Response example:
     "id": "msg_user_uuid",
     "role": "user",
     "content": "초등학교 때 여름마다 할머니 댁에 갔어요.",
+    "safety_mode": false,
     "created_at": "2026-03-25T09:00:00Z"
   },
   "assistant_message": {
     "id": "msg_assistant_uuid",
     "role": "assistant",
     "content": "말씀 감사합니다. 그때 가장 먼저 떠오르는 장소가 있나요?",
+    "safety_mode": false,
     "created_at": "2026-03-25T09:00:01Z"
   },
   "transcript": "초등학교 때 여름마다 할머니 댁에 갔어요.",
@@ -274,6 +281,7 @@ Response example:
 설명:
 - 위험 신호 발화를 별도로 검사
 - 내부적으로는 /voice/turn 내에서 자동 호출될 수 있음
+- 현재 구현은 OpenAI Structured Outputs 기반 판단을 우선 사용하고, 실패 시 키워드 fallback 을 사용한다.
 
 Request example:
 {
@@ -284,5 +292,6 @@ Response example:
 {
   "safety_mode": true,
   "severity": "high",
+  "reason": "응급 또는 고위험 신호가 감지되었습니다.",
   "recommended_action": "응급 도움 요청 안내"
 }

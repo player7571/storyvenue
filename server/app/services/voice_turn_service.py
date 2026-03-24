@@ -5,6 +5,12 @@ from supabase import Client
 from app.api.schemas.message import MessageResponse
 from app.api.schemas.voice import VoiceTurnResponse
 from app.db.supabase import get_supabase_service_role_client
+from app.services.safety_check_service import (
+    OpenAISafetyCheckService,
+    SafetyCheckConfigurationError,
+    SafetyCheckService,
+    SafetyCheckServiceError,
+)
 from app.services.session_service import (
     SessionNotFoundError,
     SessionPersistenceError,
@@ -56,6 +62,7 @@ class VoiceTurnService:
         client: Client | None = None,
         stt_service: SpeechToTextService | None = None,
         text_generation_service: TextGenerationService | None = None,
+        safety_check_service: SafetyCheckService | None = None,
         tts_service: TextToSpeechService | None = None,
     ) -> None:
         try:
@@ -71,6 +78,10 @@ class VoiceTurnService:
         self.text_generation_service = (
             text_generation_service or MockTextGenerationService()
         )
+        try:
+            self.safety_check_service = safety_check_service or OpenAISafetyCheckService()
+        except SafetyCheckConfigurationError as exc:
+            raise VoiceTurnConfigurationError(str(exc)) from exc
         try:
             self.tts_service = tts_service or OpenAITextToSpeechService()
         except TextToSpeechConfigurationError as exc:
@@ -95,6 +106,9 @@ class VoiceTurnService:
 
         try:
             transcript_result = self.stt_service.transcribe(audio)
+            safety_result = self.safety_check_service.check_text(
+                text=transcript_result.transcript
+            )
             user_message = self._create_message(
                 user_id=user_id,
                 session_id=session_id,
@@ -102,20 +116,27 @@ class VoiceTurnService:
                 content=transcript_result.transcript,
                 source_type="stt",
                 stt_confidence=transcript_result.confidence,
-                safety_mode=False,
+                safety_mode=safety_result.safety_mode,
             )
 
-            assistant_result = self.text_generation_service.generate_reply(
-                session_id=session_id,
-                transcript=transcript_result.transcript,
-            )
+            if safety_result.safety_mode:
+                assistant_text = safety_result.assistant_guidance()
+                assistant_safety_mode = True
+            else:
+                assistant_result = self.text_generation_service.generate_reply(
+                    session_id=session_id,
+                    transcript=transcript_result.transcript,
+                )
+                assistant_text = assistant_result.text
+                assistant_safety_mode = assistant_result.safety_mode
+
             assistant_message = self._create_message(
                 user_id=user_id,
                 session_id=session_id,
                 role="assistant",
-                content=assistant_result.text,
+                content=assistant_text,
                 source_type="generated",
-                safety_mode=assistant_result.safety_mode,
+                safety_mode=assistant_safety_mode,
             )
 
             tts_result = self.tts_service.synthesize(
@@ -124,6 +145,7 @@ class VoiceTurnService:
                 text=assistant_message.content,
             )
         except (
+            SafetyCheckServiceError,
             SpeechToTextServiceError,
             TextGenerationServiceError,
             TextToSpeechServiceError,
@@ -136,7 +158,7 @@ class VoiceTurnService:
             transcript=transcript_result.transcript,
             audio_reply_url=tts_result.audio_reply_url,
             memory_items_created=0,
-            safety_mode=assistant_result.safety_mode,
+            safety_mode=safety_result.safety_mode or assistant_safety_mode,
         )
 
     def _create_message(
@@ -167,7 +189,7 @@ class VoiceTurnService:
             self.client.table("messages").insert(payload).execute()
             response = (
                 self.client.table("messages")
-                .select("id, role, content, created_at")
+                .select("id, role, content, safety_mode, created_at")
                 .eq("id", str(message_id))
                 .eq("session_id", str(session_id))
                 .eq("user_id", str(user_id))
