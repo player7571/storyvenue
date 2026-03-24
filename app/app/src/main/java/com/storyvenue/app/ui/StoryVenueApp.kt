@@ -1,5 +1,6 @@
 package com.storyvenue.app.ui
 
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,28 +16,36 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.storyvenue.app.auth.LoginUiState
+import com.storyvenue.app.auth.LoginViewModel
 
 private enum class StoryVenueScreen(val route: String, val title: String) {
     Login("login", "로그인"),
@@ -81,7 +90,7 @@ private fun StoryVenueScaffold(navController: NavHostController) {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(StoryVenueScreen.Login.route) {
-                LoginPlaceholder(
+                LoginRoute(
                     onContinue = {
                         navController.navigate(StoryVenueScreen.Home.route) {
                             popUpTo(StoryVenueScreen.Login.route) { inclusive = true }
@@ -123,15 +132,77 @@ private fun StoryVenueScaffold(navController: NavHostController) {
 }
 
 @Composable
-private fun LoginPlaceholder(onContinue: () -> Unit) {
+private fun LoginRoute(
+    onContinue: () -> Unit,
+    loginViewModel: LoginViewModel = viewModel(),
+) {
+    val uiState = loginViewModel.uiState
+
+    LaunchedEffect(uiState.isLoginSuccessful) {
+        if (uiState.isLoginSuccessful) {
+            onContinue()
+            loginViewModel.onLoginNavigationComplete()
+        }
+    }
+
+    LoginScreen(
+        uiState = uiState,
+        onEmailChanged = loginViewModel::onEmailChanged,
+        onPasswordChanged = loginViewModel::onPasswordChanged,
+        onLoginClick = loginViewModel::onLoginClick,
+    )
+}
+
+@Composable
+private fun LoginScreen(
+    uiState: LoginUiState,
+    onEmailChanged: (String) -> Unit,
+    onPasswordChanged: (String) -> Unit,
+    onLoginClick: () -> Unit,
+) {
     ScreenContainer {
         HeadingText(text = "편하게 시작해 보세요")
-        BodyText(text = "로그인 화면 placeholder 입니다. 다음 단계에서 이메일 로그인과 세션 유지 흐름을 연결합니다.")
-        Spacer(modifier = Modifier.height(24.dp))
-        PrimaryActionButton(
-            label = "홈으로 이동",
-            onClick = onContinue,
+        BodyText(text = "실제 Supabase 인증 전 단계입니다. 지금은 이메일 입력, 로딩, 실패, 성공 이동 흐름만 먼저 연결합니다.")
+        Spacer(modifier = Modifier.height(20.dp))
+        OutlinedTextField(
+            value = uiState.email,
+            onValueChange = onEmailChanged,
+            label = { Text("이메일") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !uiState.isLoading,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
         )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.password,
+            onValueChange = onPasswordChanged,
+            label = { Text("비밀번호") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !uiState.isLoading,
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        if (uiState.isLoading) {
+            LoadingPlaceholder()
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        if (uiState.errorMessage != null) {
+            StatusCard(
+                title = "로그인 실패 placeholder",
+                content = uiState.errorMessage,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        PrimaryActionButton(
+            label = if (uiState.isLoading) "로그인 중..." else "로그인",
+            onClick = onLoginClick,
+            enabled = !uiState.isLoading,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        BodyText(text = "TODO: 실제 Supabase Auth 연동 후 세션 유지와 에러 메시지를 교체합니다.")
     }
 }
 
@@ -325,13 +396,35 @@ private fun StatusCard(title: String, content: String) {
 }
 
 @Composable
+private fun LoadingPlaceholder() {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = "로그인을 확인하는 중입니다.",
+                style = MaterialTheme.typography.bodyLarge,
+                fontSize = 18.sp,
+            )
+        }
+    }
+}
+
+@Composable
 private fun PrimaryActionButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 64.dp),

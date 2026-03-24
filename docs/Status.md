@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조까지 준비된 최소 실행 단계다.
+현재는 FastAPI `/health`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 UI/ViewModel 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -34,6 +34,9 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - Android app 기본 프로젝트 구조 생성
 - Login, Home, Voice Interview, Draft, Book Preview placeholder 화면 추가
 - Compose 기반 단일 Activity 와 navigation 구조 추가
+- 이메일 로그인 입력 필드, 로그인 버튼, 로딩/실패 placeholder 상태 추가
+- 로그인 ViewModel 과 placeholder AuthRepository 구조 추가
+- 로그인 성공 시 Home 화면 이동 흐름 추가
 - `:app:compileDebugKotlin`, `:app:assembleDebug` 검증 통과
 
 ## In progress
@@ -43,11 +46,12 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - Supabase 스키마와 인증은 아직 구현되지 않았다.
 - 음성 업로드, STT, TTS, safety 관련 API는 아직 없다.
 - DB 접근용 repository/service 계층은 아직 없다.
-- 앱 화면은 모두 placeholder 이며 실제 데이터 연결이 없다.
+- 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
+- Voice Interview, Draft, Book Preview 화면은 아직 실제 데이터 연결이 없다.
 
 ## Next
 1. Supabase 스키마 초안 작성
-2. 로그인 화면에 실제 인증 흐름 연결
+2. 로그인 화면에 실제 Supabase Auth 연동
 3. Voice Interview 화면에 마이크 권한 및 상태 전이 연결
 4. 서버의 세션/voice turn API 초안 구현
 5. placeholder 화면을 실제 데이터 흐름과 연결
@@ -111,6 +115,9 @@ server 검증:
 - `app/app/build.gradle.kts`
 - `app/app/proguard-rules.pro`
 - `app/app/src/main/AndroidManifest.xml`
+- `app/app/src/main/java/com/storyvenue/app/auth/AuthRepository.kt`
+- `app/app/src/main/java/com/storyvenue/app/auth/PlaceholderAuthRepository.kt`
+- `app/app/src/main/java/com/storyvenue/app/auth/LoginViewModel.kt`
 - `app/app/src/main/res/values/strings.xml`
 - `app/app/src/main/java/com/storyvenue/app/MainActivity.kt`
 - `app/app/src/main/java/com/storyvenue/app/ui/StoryVenueApp.kt`
@@ -120,3 +127,4 @@ server 검증:
 - 음성 발화도 반드시 텍스트로 함께 저장한다.
 - 안전 관련 발화는 자서전 인터뷰보다 우선한다.
 - 음성 기능은 실기기에서 검증해야 한다.
+- 로그인은 현재 placeholder 인증 흐름이며 실제 Supabase Auth 교체가 TODO 로 남아 있다.
