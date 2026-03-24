@@ -9,27 +9,18 @@ MVP 기준 핵심 테이블:
 - chapter_drafts
 - autobiography_versions
 
-아래는 target schema draft 기준 문서다.
-현재 구현과 직접 맞물린 흐름은 `sessions`, `messages`, `memory_items`, `chapter_drafts` 중심이며,
-`profiles` 와 `autobiography_versions` 는 아직 앱/API 흐름에 완전히 연결되지 않았다.
-실제 migration/RLS 적용 여부는 별도 확인이 필요하다.
-
-오디오 파일 자체는 MVP에서 장기 보관하지 않는 것을 기본 원칙으로 한다.
-필요 시 임시 저장 후 삭제 정책을 사용한다.
-
----
+실제 적용용 SQL 은 [server/sql/mvp_schema.sql](/Users/player7571/storyvenue/server/sql/mvp_schema.sql) 에 있다.
+현재 앱/서버 구현은 아래 컬럼을 전제로 동작한다.
 
 ## profiles
 설명:
-- 사용자 기본 프로필
+- Supabase Auth 사용자와 1:1 대응되는 기본 프로필
 
 Columns:
-- id: uuid, primary key
-- email: text
+- id: uuid, primary key, `auth.users.id` 참조
+- email: text, nullable
 - display_name: text, nullable
-- created_at: timestamptz
-
----
+- created_at: timestamptz, not null
 
 ## sessions
 설명:
@@ -40,13 +31,8 @@ Columns:
 - user_id: uuid, not null
 - title: text, not null
 - theme: text, nullable
-- status: text, default 'active'
-- created_at: timestamptz
-
-관계:
-- sessions.user_id -> profiles.id
-
----
+- status: text, default `active`
+- created_at: timestamptz, not null
 
 ## messages
 설명:
@@ -57,19 +43,13 @@ Columns:
 - session_id: uuid, not null
 - user_id: uuid, not null
 - role: text, not null
-  - allowed: user, assistant, system
+  allowed: `user`, `assistant`, `system`
 - content: text, not null
-- source_type: text, default 'text'
-  - allowed: text, stt, generated
+- source_type: text, not null, default `text`
+  allowed: `text`, `stt`, `generated`
 - stt_confidence: numeric, nullable
-- safety_mode: boolean, default false
-- created_at: timestamptz
-
-관계:
-- messages.session_id -> sessions.id
-- messages.user_id -> profiles.id
-
----
+- safety_mode: boolean, not null, default `false`
+- created_at: timestamptz, not null
 
 ## memory_items
 설명:
@@ -87,14 +67,7 @@ Columns:
 - emotions: jsonb, nullable
 - meaning: text, nullable
 - raw_text: text, nullable
-- created_at: timestamptz
-
-관계:
-- memory_items.session_id -> sessions.id
-- memory_items.message_id -> messages.id
-- memory_items.user_id -> profiles.id
-
----
+- created_at: timestamptz, not null
 
 ## chapter_drafts
 설명:
@@ -107,48 +80,30 @@ Columns:
 - chapter_type: text, nullable
 - title: text, not null
 - content: text, not null
-- version_no: integer, default 1
-- created_at: timestamptz
-- updated_at: timestamptz
-
-관계:
-- chapter_drafts.user_id -> profiles.id
-- chapter_drafts.session_id -> sessions.id
-
----
+- version_no: integer, not null, default `1`
+- created_at: timestamptz, not null
+- updated_at: timestamptz, not null
 
 ## autobiography_versions
 설명:
-- 최종 자서전 버전 저장
+- 최종 자서전 저장 버전
 
 Columns:
 - id: uuid, primary key
 - user_id: uuid, not null
 - title: text, not null
 - content: text, not null
-- created_at: timestamptz
+- chapter_ids: jsonb, not null, default `[]`
+- created_at: timestamptz, not null
 
-관계:
-- autobiography_versions.user_id -> profiles.id
-
----
-
-## Initial RLS direction
-모든 사용자 데이터 테이블은
+## RLS direction
+모든 사용자 데이터 테이블은 기본적으로 아래 정책을 따른다.
 - 인증된 사용자만 접근 가능
-- user_id = auth.uid() 인 데이터만 조회/수정 가능
-원칙을 따른다.
-
-대상:
-- sessions
-- messages
-- memory_items
-- chapter_drafts
-- autobiography_versions
-
----
+- `user_id = auth.uid()` 인 데이터만 조회/수정 가능
+- `profiles` 는 `id = auth.uid()` 기준으로 조회/수정 가능
 
 ## Audio handling direction
-- 음성 원본 파일은 기본적으로 장기 보관하지 않는다.
-- STT 후 필요한 경우에만 임시 저장한다.
-- MVP에서는 텍스트 로그와 생성 결과 저장을 우선한다.
+- 음성 원본 파일은 장기 보관하지 않는다.
+- TTS 생성 파일은 서버 로컬 `.generated-audio` 에 저장한다.
+- 기본 정리 정책은 `OPENAI_TTS_RETENTION_HOURS=24` 이다.
+- STT transcript 와 생성 결과는 DB 에 저장한다.

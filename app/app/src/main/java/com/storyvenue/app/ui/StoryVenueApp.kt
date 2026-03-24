@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,15 +17,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,14 +55,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.storyvenue.app.auth.LoginUiState
-import com.storyvenue.app.auth.LoginViewModel
+import com.storyvenue.app.AuthMode
+import com.storyvenue.app.BookVersion
+import com.storyvenue.app.ChapterDraft
+import com.storyvenue.app.InterviewSessionSummary
+import com.storyvenue.app.SessionMessage
+import com.storyvenue.app.StoryVenueUiState
+import com.storyvenue.app.StoryVenueViewModel
 import com.storyvenue.app.voice.AudioReplyPlayer
 import com.storyvenue.app.voice.MediaPlayerAudioReplyPlayer
 import com.storyvenue.app.voice.MediaRecorderVoiceRecorder
 import com.storyvenue.app.voice.VoiceInterviewPhase
-import com.storyvenue.app.voice.VoiceInterviewUiState
-import com.storyvenue.app.voice.VoiceInterviewViewModel
 import com.storyvenue.app.voice.VoiceRecorder
 import com.storyvenue.app.voice.VoiceRecordingFileStore
 
@@ -82,22 +85,48 @@ private enum class StoryVenueScreen(val route: String, val title: String) {
 @Composable
 fun StoryVenueApp() {
     val navController = rememberNavController()
+    val storyVenueViewModel: StoryVenueViewModel = viewModel()
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            StoryVenueScaffold(navController = navController)
+            StoryVenueScaffold(
+                navController = navController,
+                storyVenueViewModel = storyVenueViewModel,
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StoryVenueScaffold(navController: NavHostController) {
+private fun StoryVenueScaffold(
+    navController: NavHostController,
+    storyVenueViewModel: StoryVenueViewModel,
+) {
+    val uiState = storyVenueViewModel.uiState
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val currentScreen = StoryVenueScreen.entries.firstOrNull { screen ->
         currentDestination?.hierarchy?.any { it.route == screen.route } == true
     } ?: StoryVenueScreen.Login
+
+    LaunchedEffect(uiState.authSession, uiState.isRestoringSession) {
+        if (uiState.isRestoringSession) {
+            return@LaunchedEffect
+        }
+
+        if (uiState.authSession == null && currentScreen != StoryVenueScreen.Login) {
+            navController.navigate(StoryVenueScreen.Login.route) {
+                popUpTo(0)
+                launchSingleTop = true
+            }
+        } else if (uiState.authSession != null && currentScreen == StoryVenueScreen.Login) {
+            navController.navigate(StoryVenueScreen.Home.route) {
+                popUpTo(StoryVenueScreen.Login.route) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -114,29 +143,39 @@ private fun StoryVenueScaffold(navController: NavHostController) {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(StoryVenueScreen.Login.route) {
-                LoginRoute(
-                    onContinue = {
-                        navController.navigate(StoryVenueScreen.Home.route) {
-                            popUpTo(StoryVenueScreen.Login.route) { inclusive = true }
-                        }
-                    },
+                LoginScreen(
+                    uiState = uiState,
+                    onServerBaseUrlChanged = storyVenueViewModel::onServerBaseUrlChanged,
+                    onEmailChanged = storyVenueViewModel::onEmailChanged,
+                    onPasswordChanged = storyVenueViewModel::onPasswordChanged,
+                    onAuthModeChanged = storyVenueViewModel::onAuthModeChanged,
+                    onSubmit = storyVenueViewModel::submitAuth,
                 )
             }
             composable(StoryVenueScreen.Home.route) {
-                HomePlaceholder(
-                    onVoiceInterviewClick = {
+                HomeScreen(
+                    uiState = uiState,
+                    onServerBaseUrlChanged = storyVenueViewModel::onServerBaseUrlChanged,
+                    onNewSessionTitleChanged = storyVenueViewModel::onNewSessionTitleChanged,
+                    onNewSessionThemeChanged = storyVenueViewModel::onNewSessionThemeChanged,
+                    onCreateSession = storyVenueViewModel::createSession,
+                    onSelectSession = storyVenueViewModel::selectSession,
+                    onOpenVoiceInterview = {
                         navController.navigate(StoryVenueScreen.VoiceInterview.route)
                     },
-                    onDraftClick = {
+                    onOpenDraft = {
                         navController.navigate(StoryVenueScreen.Draft.route)
                     },
-                    onBookPreviewClick = {
+                    onOpenBookPreview = {
                         navController.navigate(StoryVenueScreen.BookPreview.route)
                     },
+                    onSignOut = storyVenueViewModel::signOut,
                 )
             }
             composable(StoryVenueScreen.VoiceInterview.route) {
                 VoiceInterviewRoute(
+                    uiState = uiState,
+                    storyVenueViewModel = storyVenueViewModel,
                     onBackHome = {
                         navController.navigate(StoryVenueScreen.Home.route) {
                             popUpTo(StoryVenueScreen.Home.route) { inclusive = false }
@@ -146,58 +185,87 @@ private fun StoryVenueScaffold(navController: NavHostController) {
                 )
             }
             composable(StoryVenueScreen.Draft.route) {
-                DraftPlaceholder(
-                    onOpenPreview = { navController.navigate(StoryVenueScreen.BookPreview.route) },
+                DraftScreen(
+                    uiState = uiState,
+                    onChapterTypeChanged = storyVenueViewModel::onChapterTypeChanged,
+                    onGenerateChapter = storyVenueViewModel::generateChapter,
+                    onSelectChapter = storyVenueViewModel::selectChapter,
+                    onMoveChapterUp = storyVenueViewModel::moveChapterUp,
+                    onMoveChapterDown = storyVenueViewModel::moveChapterDown,
+                    onChapterInstructionChanged = storyVenueViewModel::onChapterInstructionChanged,
+                    onReviseChapter = storyVenueViewModel::reviseSelectedChapter,
+                    onRegenerateChapter = storyVenueViewModel::regenerateSelectedChapter,
+                    onOpenPreview = {
+                        navController.navigate(StoryVenueScreen.BookPreview.route)
+                    },
                 )
             }
             composable(StoryVenueScreen.BookPreview.route) {
-                BookPreviewPlaceholder(
-                    onReturnHome = { navController.navigate(StoryVenueScreen.Home.route) },
+                BookPreviewScreen(
+                    uiState = uiState,
+                    onBookTitleChanged = storyVenueViewModel::onBookTitleChanged,
+                    onCompileBook = storyVenueViewModel::compileBook,
+                    onSelectBook = storyVenueViewModel::selectBook,
+                    onMoveChapterUp = storyVenueViewModel::moveChapterUp,
+                    onMoveChapterDown = storyVenueViewModel::moveChapterDown,
+                    onReturnHome = {
+                        navController.navigate(StoryVenueScreen.Home.route) {
+                            popUpTo(StoryVenueScreen.Home.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
         }
     }
-}
-
-@Composable
-private fun LoginRoute(
-    onContinue: () -> Unit,
-    loginViewModel: LoginViewModel = viewModel(),
-) {
-    val uiState = loginViewModel.uiState
-
-    LaunchedEffect(uiState.isLoginSuccessful) {
-        if (uiState.isLoginSuccessful) {
-            onContinue()
-            loginViewModel.onLoginNavigationComplete()
-        }
-    }
-
-    LoginScreen(
-        uiState = uiState,
-        onEmailChanged = loginViewModel::onEmailChanged,
-        onPasswordChanged = loginViewModel::onPasswordChanged,
-        onLoginClick = loginViewModel::onLoginClick,
-    )
 }
 
 @Composable
 private fun LoginScreen(
-    uiState: LoginUiState,
+    uiState: StoryVenueUiState,
+    onServerBaseUrlChanged: (String) -> Unit,
     onEmailChanged: (String) -> Unit,
     onPasswordChanged: (String) -> Unit,
-    onLoginClick: () -> Unit,
+    onAuthModeChanged: (AuthMode) -> Unit,
+    onSubmit: () -> Unit,
 ) {
     ScreenContainer {
         HeadingText(text = "편하게 시작해 보세요")
-        BodyText(text = "실제 Supabase 인증 전 단계입니다. 지금은 이메일 입력, 로딩, 실패, 성공 이동 흐름만 먼저 연결합니다.")
+        BodyText(text = "이메일로 로그인하거나 가입한 뒤, 같은 세션에서 음성 인터뷰와 자서전 초안 작성을 이어갈 수 있습니다.")
         Spacer(modifier = Modifier.height(20.dp))
+        OutlinedTextField(
+            value = uiState.serverBaseUrl,
+            onValueChange = onServerBaseUrlChanged,
+            label = { Text("서버 주소") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !uiState.isAuthLoading,
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedActionButton(
+                label = "로그인 모드",
+                onClick = { onAuthModeChanged(AuthMode.SignIn) },
+                modifier = Modifier.weight(1f),
+                enabled = uiState.authMode != AuthMode.SignIn,
+            )
+            OutlinedActionButton(
+                label = "회원가입 모드",
+                onClick = { onAuthModeChanged(AuthMode.SignUp) },
+                modifier = Modifier.weight(1f),
+                enabled = uiState.authMode != AuthMode.SignUp,
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
             value = uiState.email,
             onValueChange = onEmailChanged,
             label = { Text("이메일") },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isLoading,
+            enabled = !uiState.isAuthLoading,
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
         )
@@ -207,58 +275,157 @@ private fun LoginScreen(
             onValueChange = onPasswordChanged,
             label = { Text("비밀번호") },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isLoading,
+            enabled = !uiState.isAuthLoading,
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         )
         Spacer(modifier = Modifier.height(16.dp))
-        if (uiState.isLoading) {
-            LoadingPlaceholder()
+        if (uiState.isRestoringSession || uiState.isAuthLoading) {
+            LoadingPlaceholder(
+                message = if (uiState.isRestoringSession) {
+                    "저장된 로그인 정보를 확인하는 중입니다."
+                } else {
+                    if (uiState.authMode == AuthMode.SignIn) "로그인 중입니다." else "가입 중입니다."
+                }
+            )
             Spacer(modifier = Modifier.height(16.dp))
         }
-        if (uiState.errorMessage != null) {
+        if (uiState.authMessage != null) {
             StatusCard(
-                title = "로그인 실패 placeholder",
-                content = uiState.errorMessage,
+                title = "안내",
+                content = uiState.authMessage,
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
         PrimaryActionButton(
-            label = if (uiState.isLoading) "로그인 중..." else "로그인",
-            onClick = onLoginClick,
-            enabled = !uiState.isLoading,
+            label = if (uiState.authMode == AuthMode.SignIn) "로그인" else "회원가입",
+            onClick = onSubmit,
+            enabled = !uiState.isRestoringSession && !uiState.isAuthLoading,
         )
-        Spacer(modifier = Modifier.height(12.dp))
-        BodyText(text = "TODO: 실제 Supabase Auth 연동 후 세션 유지와 에러 메시지를 교체합니다.")
     }
 }
 
 @Composable
-private fun HomePlaceholder(
-    onVoiceInterviewClick: () -> Unit,
-    onDraftClick: () -> Unit,
-    onBookPreviewClick: () -> Unit,
+private fun HomeScreen(
+    uiState: StoryVenueUiState,
+    onServerBaseUrlChanged: (String) -> Unit,
+    onNewSessionTitleChanged: (String) -> Unit,
+    onNewSessionThemeChanged: (String) -> Unit,
+    onCreateSession: () -> Unit,
+    onSelectSession: (String) -> Unit,
+    onOpenVoiceInterview: () -> Unit,
+    onOpenDraft: () -> Unit,
+    onOpenBookPreview: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
+    val selectedSession = uiState.sessions.firstOrNull { it.id == uiState.selectedSessionId }
+
     ScreenContainer {
         HeadingText(text = "오늘의 시작 화면")
-        BodyText(text = "큰 버튼으로 주요 화면만 먼저 제공합니다.")
+        BodyText(text = uiState.authSession?.email?.let { "$it 로 로그인되어 있습니다." } ?: "로그인 정보가 없습니다.")
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.serverBaseUrl,
+            onValueChange = onServerBaseUrlChanged,
+            label = { Text("서버 주소") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        StatusCard(
+            title = "선택된 세션",
+            content = selectedSession?.let { "${it.title}\n${it.theme ?: "주제 없음"}" }
+                ?: "아직 선택된 인터뷰 세션이 없습니다.",
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        if (uiState.homeMessage != null) {
+            StatusCard(
+                title = "안내",
+                content = uiState.homeMessage,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        if (uiState.isHomeLoading) {
+            LoadingPlaceholder(message = "세션 정보를 불러오는 중입니다.")
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        StatusCard(
+            title = "새 인터뷰 세션 만들기",
+            content = "짧은 제목과 주제를 적어 두면 나중에 초안 생성 때 구분하기 쉽습니다.",
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.newSessionTitle,
+            onValueChange = onNewSessionTitleChanged,
+            label = { Text("세션 제목") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.newSessionTheme,
+            onValueChange = onNewSessionThemeChanged,
+            label = { Text("주제") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        PrimaryActionButton(
+            label = "새 세션 만들기",
+            onClick = onCreateSession,
+            enabled = !uiState.isHomeLoading,
+        )
         Spacer(modifier = Modifier.height(20.dp))
-        PrimaryActionButton(label = "음성 인터뷰 열기", onClick = onVoiceInterviewClick)
+        HeadingText(text = "내 세션 목록")
+        if (uiState.sessions.isEmpty()) {
+            StatusCard(
+                title = "빈 상태",
+                content = "아직 인터뷰 세션이 없습니다. 위에서 새 세션을 먼저 만들어 주세요.",
+            )
+        } else {
+            uiState.sessions.forEach { session ->
+                SessionSummaryCard(
+                    session = session,
+                    isSelected = session.id == uiState.selectedSessionId,
+                    onSelect = { onSelectSession(session.id) },
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        PrimaryActionButton(
+            label = "음성 인터뷰 열기",
+            onClick = onOpenVoiceInterview,
+            enabled = uiState.selectedSessionId != null,
+        )
         Spacer(modifier = Modifier.height(12.dp))
-        PrimaryActionButton(label = "초안 보기", onClick = onDraftClick)
+        PrimaryActionButton(
+            label = "장 초안 보기",
+            onClick = onOpenDraft,
+            enabled = uiState.selectedSessionId != null,
+        )
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedActionButton(label = "책 미리보기", onClick = onBookPreviewClick)
+        OutlinedActionButton(
+            label = "책 미리보기",
+            onClick = onOpenBookPreview,
+            enabled = uiState.chapters.isNotEmpty() || uiState.books.isNotEmpty(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "로그아웃",
+            onClick = onSignOut,
+        )
     }
 }
 
 @Composable
 private fun VoiceInterviewRoute(
+    uiState: StoryVenueUiState,
+    storyVenueViewModel: StoryVenueViewModel,
     onBackHome: () -> Unit,
-    voiceInterviewViewModel: VoiceInterviewViewModel = viewModel(),
 ) {
     val context = LocalContext.current
-    val uiState = voiceInterviewViewModel.uiState
     val recorder: VoiceRecorder = remember { MediaRecorderVoiceRecorder() }
     val audioReplyPlayer: AudioReplyPlayer = remember { MediaPlayerAudioReplyPlayer() }
     val fileStore = remember { VoiceRecordingFileStore() }
@@ -269,14 +436,14 @@ private fun VoiceInterviewRoute(
         val outputFile = fileStore.createTempFile(context)
         recorder.start(outputFile).fold(
             onSuccess = {
-                voiceInterviewViewModel.onRecordingStarted(
+                storyVenueViewModel.onRecordingStarted(
                     recordingPath = outputFile.absolutePath,
                     isRetry = isRetry,
                 )
             },
             onFailure = {
                 outputFile.delete()
-                voiceInterviewViewModel.onRecordingStartFailed(
+                storyVenueViewModel.onRecordingStartFailed(
                     "녹음을 시작하지 못했습니다. 기기 설정을 확인해 주세요.",
                 )
             },
@@ -287,15 +454,15 @@ private fun VoiceInterviewRoute(
         contract = ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
         if (isGranted) {
-            voiceInterviewViewModel.onPermissionGranted()
+            storyVenueViewModel.onPermissionGranted()
             startRecording(pendingRecordingAction == PendingRecordingAction.Retry)
         } else {
-            voiceInterviewViewModel.onPermissionDenied()
+            storyVenueViewModel.onPermissionDenied()
         }
     }
 
     LaunchedEffect(Unit) {
-        voiceInterviewViewModel.onPermissionStateChecked(
+        storyVenueViewModel.onPermissionStateChecked(
             isGranted = hasRecordAudioPermission(context),
         )
     }
@@ -303,18 +470,18 @@ private fun VoiceInterviewRoute(
     LaunchedEffect(uiState.isSessionEnded) {
         if (uiState.isSessionEnded) {
             onBackHome()
-            voiceInterviewViewModel.onSessionNavigationComplete()
+            storyVenueViewModel.onSessionNavigationComplete()
         }
     }
 
     LaunchedEffect(uiState.pendingAssistantPlaybackUrl) {
         val audioUrl = uiState.pendingAssistantPlaybackUrl ?: return@LaunchedEffect
-        voiceInterviewViewModel.onAssistantPlaybackRequestConsumed()
+        storyVenueViewModel.onAssistantPlaybackRequestConsumed()
         audioReplyPlayer.play(
             url = audioUrl,
-            onStarted = voiceInterviewViewModel::onAssistantPlaybackStarted,
-            onCompleted = voiceInterviewViewModel::onAssistantPlaybackCompleted,
-            onError = voiceInterviewViewModel::onAssistantPlaybackFailed,
+            onStarted = storyVenueViewModel::onAssistantPlaybackStarted,
+            onCompleted = storyVenueViewModel::onAssistantPlaybackCompleted,
+            onError = storyVenueViewModel::onAssistantPlaybackFailed,
         )
     }
 
@@ -327,17 +494,17 @@ private fun VoiceInterviewRoute(
 
     val requestPermissionAndRecord: (PendingRecordingAction) -> Unit = { action ->
         pendingRecordingAction = action
-        voiceInterviewViewModel.onPermissionRequestStarted()
+        storyVenueViewModel.onPermissionRequestStarted()
         permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     val stopRecording: () -> Unit = {
         recorder.stop().fold(
             onSuccess = { recordedFile ->
-                voiceInterviewViewModel.onRecordingStopped(recordedFile.absolutePath)
+                storyVenueViewModel.onRecordingStopped(recordedFile.absolutePath)
             },
             onFailure = {
-                voiceInterviewViewModel.onRecordingStopFailed(
+                storyVenueViewModel.onRecordingStopFailed(
                     "녹음을 멈추지 못했습니다. 다시 시도해 주세요.",
                 )
             },
@@ -346,9 +513,6 @@ private fun VoiceInterviewRoute(
 
     VoiceInterviewScreen(
         uiState = uiState,
-        onServerBaseUrlChanged = voiceInterviewViewModel::onServerBaseUrlChanged,
-        onUserIdChanged = voiceInterviewViewModel::onUserIdChanged,
-        onSessionIdChanged = voiceInterviewViewModel::onSessionIdChanged,
         onMicrophoneClick = {
             when {
                 uiState.phase == VoiceInterviewPhase.Listening -> stopRecording()
@@ -358,11 +522,11 @@ private fun VoiceInterviewRoute(
         },
         onRepeatLastQuestion = {
             audioReplyPlayer.stop()
-            voiceInterviewViewModel.onRepeatLastQuestionRequested()
+            storyVenueViewModel.onRepeatLastQuestionRequested()
         },
         onRetrySpeech = {
             audioReplyPlayer.stop()
-            voiceInterviewViewModel.onRetrySpeechReady()
+            storyVenueViewModel.onRetrySpeechReady()
             if (uiState.hasRecordAudioPermission) {
                 startRecording(true)
             } else {
@@ -372,49 +536,32 @@ private fun VoiceInterviewRoute(
         onEndSession = {
             recorder.discard()
             audioReplyPlayer.stop()
-            voiceInterviewViewModel.onEndSession()
+            storyVenueViewModel.onEndSession()
         },
     )
 }
 
 @Composable
 private fun VoiceInterviewScreen(
-    uiState: VoiceInterviewUiState,
-    onServerBaseUrlChanged: (String) -> Unit,
-    onUserIdChanged: (String) -> Unit,
-    onSessionIdChanged: (String) -> Unit,
+    uiState: StoryVenueUiState,
     onMicrophoneClick: () -> Unit,
     onRepeatLastQuestion: () -> Unit,
     onRetrySpeech: () -> Unit,
     onEndSession: () -> Unit,
 ) {
+    val selectedSession = uiState.sessions.firstOrNull { it.id == uiState.selectedSessionId }
+
     ScreenContainer {
-        HeadingText(text = "음성 인터뷰 준비 화면")
-        BodyText(text = "테스트용 서버 연결 정보를 먼저 입력한 뒤 녹음을 업로드합니다.")
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-            value = uiState.serverBaseUrl,
-            onValueChange = onServerBaseUrlChanged,
-            label = { Text("서버 주소") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-            value = uiState.userIdInput,
-            onValueChange = onUserIdChanged,
-            label = { Text("테스트 사용자 ID") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-            value = uiState.sessionIdInput,
-            onValueChange = onSessionIdChanged,
-            label = { Text("세션 ID") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
+        HeadingText(text = "음성 인터뷰")
+        if (selectedSession == null) {
+            StatusCard(
+                title = "세션 필요",
+                content = "홈 화면에서 먼저 인터뷰 세션을 만들고 선택해 주세요.",
+            )
+            return@ScreenContainer
+        }
+
+        BodyText(text = "현재 세션: ${selectedSession.title}")
         Spacer(modifier = Modifier.height(12.dp))
         StatusCard(
             title = "현재 상태",
@@ -447,17 +594,34 @@ private fun VoiceInterviewScreen(
                 ?: uiState.lastSavedRecordingPath
                 ?: "cache/voice-recordings/voice_turn_{timestamp}.m4a",
         )
+        if (uiState.messages.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = "최근 대화",
+                content = uiState.messages.joinToString("\n\n") { message ->
+                    val speaker = if (message.role == "assistant") "assistant" else "사용자"
+                    "$speaker: ${message.content}"
+                },
+            )
+        }
+        if (uiState.consecutiveVoiceFailures >= 2) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = "복구 안내",
+                content = "제가 잘 못 들었을 수 있습니다. 한 문장씩 천천히 말씀해 주세요. 화면의 텍스트 결과도 함께 확인해 주세요.",
+            )
+        }
         if (uiState.phase == VoiceInterviewPhase.Transcribing ||
             uiState.phase == VoiceInterviewPhase.Responding
         ) {
             Spacer(modifier = Modifier.height(12.dp))
             LoadingPlaceholder(message = uiState.helperText)
         }
-        if (uiState.errorMessage != null) {
+        if (uiState.voiceErrorMessage != null) {
             Spacer(modifier = Modifier.height(12.dp))
             StatusCard(
                 title = "실패 상태",
-                content = uiState.errorMessage,
+                content = uiState.voiceErrorMessage,
             )
         }
         if (uiState.isPermissionDenied) {
@@ -497,67 +661,336 @@ private fun VoiceInterviewScreen(
         }
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedActionButton(
-            label = "세션 종료",
+            label = "세션 화면 닫기",
             onClick = onEndSession,
-            enabled = true,
         )
     }
 }
 
 @Composable
-private fun DraftPlaceholder(onOpenPreview: () -> Unit) {
+private fun DraftScreen(
+    uiState: StoryVenueUiState,
+    onChapterTypeChanged: (String) -> Unit,
+    onGenerateChapter: () -> Unit,
+    onSelectChapter: (String) -> Unit,
+    onMoveChapterUp: (Int) -> Unit,
+    onMoveChapterDown: (Int) -> Unit,
+    onChapterInstructionChanged: (String) -> Unit,
+    onReviseChapter: () -> Unit,
+    onRegenerateChapter: () -> Unit,
+    onOpenPreview: () -> Unit,
+) {
+    val selectedSession = uiState.sessions.firstOrNull { it.id == uiState.selectedSessionId }
+    val selectedChapter = uiState.chapters.firstOrNull { it.id == uiState.selectedChapterId }
+
     ScreenContainer {
-        HeadingText(text = "장 초안 placeholder")
-        StatusCard(
-            title = "장 제목",
-            content = "1장 어린 시절",
-        )
+        HeadingText(text = "장 초안")
+        if (selectedSession == null) {
+            StatusCard(
+                title = "세션 필요",
+                content = "홈 화면에서 먼저 인터뷰 세션을 선택해 주세요.",
+            )
+            return@ScreenContainer
+        }
+
+        BodyText(text = "현재 세션: ${selectedSession.title}")
         Spacer(modifier = Modifier.height(12.dp))
         StatusCard(
-            title = "본문",
-            content = "이곳에 생성된 장별 초안이 크게 표시됩니다. 다음 단계에서 수정 요청과 재생성 흐름을 연결합니다.",
+            title = "장 생성",
+            content = "현재 세션에서 자동 추출된 기억 항목을 바탕으로 장 초안을 만듭니다.",
         )
         Spacer(modifier = Modifier.height(12.dp))
-        StatusCard(
-            title = "저장 상태",
-            content = "아직 저장되지 않았습니다.",
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        Row(
+        OutlinedTextField(
+            value = uiState.chapterTypeInput,
+            onValueChange = onChapterTypeChanged,
+            label = { Text("장 주제") },
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "수정 요청",
-                onClick = {},
-                modifier = Modifier.weight(1f),
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        PrimaryActionButton(
+            label = "장 초안 생성",
+            onClick = onGenerateChapter,
+            enabled = !uiState.isDraftLoading,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        if (uiState.isDraftLoading) {
+            LoadingPlaceholder(message = "장 초안을 처리하는 중입니다.")
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        if (uiState.chapterStatusMessage != null) {
+            StatusCard(
+                title = "안내",
+                content = uiState.chapterStatusMessage,
             )
-            OutlinedActionButton(
-                label = "다시 생성",
-                onClick = {},
-                modifier = Modifier.weight(1f),
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        if (uiState.chapters.isEmpty()) {
+            StatusCard(
+                title = "빈 상태",
+                content = "아직 장 초안이 없습니다. 먼저 음성 인터뷰를 진행한 뒤 생성해 주세요.",
             )
+        } else {
+            uiState.chapters.forEachIndexed { index, chapter ->
+                ChapterListCard(
+                    chapter = chapter,
+                    isSelected = chapter.id == uiState.selectedChapterId,
+                    onSelect = { onSelectChapter(chapter.id) },
+                    onMoveUp = { onMoveChapterUp(index) },
+                    onMoveDown = { onMoveChapterDown(index) },
+                    canMoveUp = index > 0,
+                    canMoveDown = index < uiState.chapters.lastIndex,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        if (selectedChapter != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = selectedChapter.title,
+                content = selectedChapter.content,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = "저장 상태",
+                content = "버전 ${selectedChapter.versionNo}로 저장되었습니다.",
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = uiState.chapterInstructionInput,
+                onValueChange = onChapterInstructionChanged,
+                label = { Text("수정 요청") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedActionButton(
+                    label = "수정 요청",
+                    onClick = onReviseChapter,
+                    modifier = Modifier.weight(1f),
+                    enabled = !uiState.isDraftLoading,
+                )
+                OutlinedActionButton(
+                    label = "다시 생성",
+                    onClick = onRegenerateChapter,
+                    modifier = Modifier.weight(1f),
+                    enabled = !uiState.isDraftLoading,
+                )
+            }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        PrimaryActionButton(label = "책 미리보기 열기", onClick = onOpenPreview)
+        PrimaryActionButton(
+            label = "책 미리보기 열기",
+            onClick = onOpenPreview,
+            enabled = uiState.chapters.isNotEmpty(),
+        )
     }
 }
 
 @Composable
-private fun BookPreviewPlaceholder(onReturnHome: () -> Unit) {
+private fun BookPreviewScreen(
+    uiState: StoryVenueUiState,
+    onBookTitleChanged: (String) -> Unit,
+    onCompileBook: () -> Unit,
+    onSelectBook: (String) -> Unit,
+    onMoveChapterUp: (Int) -> Unit,
+    onMoveChapterDown: (Int) -> Unit,
+    onReturnHome: () -> Unit,
+) {
     ScreenContainer {
-        HeadingText(text = "책 미리보기 placeholder")
-        StatusCard(
-            title = "미리보기 안내",
-            content = "여러 장을 하나의 흐름으로 이어서 보여주는 화면입니다.",
+        HeadingText(text = "책 미리보기")
+        if (uiState.chapters.isEmpty()) {
+            StatusCard(
+                title = "초안 필요",
+                content = "먼저 장 초안을 하나 이상 만들어 주세요.",
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            PrimaryActionButton(label = "홈으로 돌아가기", onClick = onReturnHome)
+            return@ScreenContainer
+        }
+
+        BodyText(text = "장 순서를 확인한 뒤 최종 자서전 버전으로 저장합니다.")
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.bookTitleInput,
+            onValueChange = onBookTitleChanged,
+            label = { Text("책 제목") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        StatusCard(
-            title = "본문 예시",
-            content = "어린 시절의 장면들이 한 권의 이야기처럼 이어집니다. 다음 단계에서 저장된 chapter draft 를 조합해 실제 미리보기를 구성합니다.",
+        if (uiState.isBookLoading) {
+            LoadingPlaceholder(message = "책 미리보기를 저장하는 중입니다.")
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        if (uiState.bookStatusMessage != null) {
+            StatusCard(
+                title = "안내",
+                content = uiState.bookStatusMessage,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        HeadingText(text = "장 순서")
+        uiState.chapters.forEachIndexed { index, chapter ->
+            ChapterListCard(
+                chapter = chapter,
+                isSelected = false,
+                onSelect = {},
+                onMoveUp = { onMoveChapterUp(index) },
+                onMoveDown = { onMoveChapterDown(index) },
+                canMoveUp = index > 0,
+                canMoveDown = index < uiState.chapters.lastIndex,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        PrimaryActionButton(
+            label = "최종 자서전 저장",
+            onClick = onCompileBook,
+            enabled = !uiState.isBookLoading,
         )
         Spacer(modifier = Modifier.height(20.dp))
+        HeadingText(text = "저장된 버전")
+        if (uiState.books.isEmpty()) {
+            StatusCard(
+                title = "빈 상태",
+                content = "아직 저장된 최종 자서전 버전이 없습니다.",
+            )
+        } else {
+            uiState.books.forEach { book ->
+                BookVersionCard(
+                    book = book,
+                    isSelected = book.id == uiState.selectedBookId,
+                    onSelect = { onSelectBook(book.id) },
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        if (uiState.compiledBook != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = uiState.compiledBook.title,
+                content = uiState.compiledBook.content,
+            )
+        }
+        Spacer(modifier = Modifier.height(20.dp))
         PrimaryActionButton(label = "홈으로 돌아가기", onClick = onReturnHome)
+    }
+}
+
+@Composable
+private fun SessionSummaryCard(
+    session: InterviewSessionSummary,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = session.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(text = session.theme ?: "주제 없음")
+            Text(text = "상태: ${session.status}")
+            OutlinedActionButton(
+                label = if (isSelected) "선택됨" else "이 세션 선택",
+                onClick = onSelect,
+                enabled = !isSelected,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChapterListCard(
+    chapter: ChapterDraft,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = chapter.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(text = "버전 ${chapter.versionNo}")
+            Text(
+                text = chapter.content.take(120) + if (chapter.content.length > 120) "..." else "",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedActionButton(
+                    label = if (isSelected) "선택됨" else "보기",
+                    onClick = onSelect,
+                    modifier = Modifier.weight(1f),
+                    enabled = !isSelected,
+                )
+                OutlinedActionButton(
+                    label = "위로",
+                    onClick = onMoveUp,
+                    modifier = Modifier.weight(1f),
+                    enabled = canMoveUp,
+                )
+                OutlinedActionButton(
+                    label = "아래로",
+                    onClick = onMoveDown,
+                    modifier = Modifier.weight(1f),
+                    enabled = canMoveDown,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookVersionCard(
+    book: BookVersion,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = book.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = book.content.take(140) + if (book.content.length > 140) "..." else "",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedActionButton(
+                label = if (isSelected) "선택됨" else "미리보기 열기",
+                onClick = onSelect,
+                enabled = !isSelected,
+            )
+        }
     }
 }
 
@@ -596,6 +1029,84 @@ private fun BodyText(text: String) {
     )
 }
 
+@Composable
+private fun StatusCard(
+    title: String,
+    content: String,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodyLarge,
+                lineHeight = 26.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PrimaryActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp),
+        enabled = enabled,
+    ) {
+        Text(text = label, fontSize = 18.sp)
+    }
+}
+
+@Composable
+private fun OutlinedActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 56.dp),
+        enabled = enabled,
+    ) {
+        Text(text = label, fontSize = 17.sp)
+    }
+}
+
+@Composable
+private fun LoadingPlaceholder(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator()
+            Text(text = message, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
 private fun voicePhaseLabel(phase: VoiceInterviewPhase): String {
     return when (phase) {
         VoiceInterviewPhase.Idle -> "대기 중"
@@ -621,84 +1132,4 @@ private fun hasRecordAudioPermission(context: Context): Boolean {
         context,
         Manifest.permission.RECORD_AUDIO,
     ) == PackageManager.PERMISSION_GRANTED
-}
-
-@Composable
-private fun StatusCard(title: String, content: String) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = content,
-                style = MaterialTheme.typography.bodyLarge,
-                fontSize = 18.sp,
-                lineHeight = 26.sp,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LoadingPlaceholder(message: String = "로그인을 확인하는 중입니다.") {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            CircularProgressIndicator()
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                fontSize = 18.sp,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PrimaryActionButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 64.dp),
-    ) {
-        Text(text = label, fontSize = 20.sp)
-    }
-}
-
-@Composable
-private fun OutlinedActionButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.heightIn(min = 64.dp),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(text = label, fontSize = 18.sp)
-        }
-    }
 }

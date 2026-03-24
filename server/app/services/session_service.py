@@ -53,6 +53,21 @@ class SessionService:
         except SessionNotFoundError as exc:
             raise SessionPersistenceError("Created session could not be reloaded.") from exc
 
+    def list_sessions(self, user_id: UUID) -> list[SessionResponse]:
+        try:
+            response = (
+                self.client.table("sessions")
+                .select("id, user_id, title, theme, status, created_at")
+                .eq("user_id", str(user_id))
+                .order("created_at", desc=True)
+                .execute()
+            )
+        except Exception as exc:  # pragma: no cover - external client failure path
+            raise SessionPersistenceError(str(exc)) from exc
+
+        rows = response.data or []
+        return [SessionResponse.model_validate(row) for row in rows]
+
     def get_session(self, user_id: UUID, session_id: UUID) -> SessionResponse:
         try:
             response = (

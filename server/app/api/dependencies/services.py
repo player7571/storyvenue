@@ -1,3 +1,4 @@
+from app.services.book_service import BookConfigurationError, BookService
 from fastapi import HTTPException, status
 
 from app.services.chapter_service import ChapterConfigurationError, ChapterService
@@ -62,6 +63,16 @@ def get_chapter_service() -> ChapterService:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Chapter generation service is not configured.",
+        ) from exc
+
+
+def get_book_service() -> BookService:
+    try:
+        return BookService()
+    except BookConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Book service is not configured.",
         ) from exc
 
 

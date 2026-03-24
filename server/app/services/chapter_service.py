@@ -188,6 +188,55 @@ class ChapterService:
             created_at=refreshed.created_at,
         )
 
+    def list_chapters(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID | None = None,
+    ) -> list[ChapterGenerateResponse]:
+        try:
+            query = (
+                self.client.table("chapter_drafts")
+                .select("id, session_id, chapter_type, title, content, version_no, created_at")
+                .eq("user_id", str(user_id))
+            )
+            if session_id is not None:
+                query = query.eq("session_id", str(session_id))
+            response = query.order("created_at").execute()
+        except Exception as exc:  # pragma: no cover - external client failure path
+            raise ChapterPersistenceError(str(exc)) from exc
+
+        rows = response.data or []
+        return [
+            ChapterGenerateResponse(
+                chapter_id=UUID(str(row["id"])),
+                session_id=UUID(str(row["session_id"])) if row.get("session_id") else None,
+                chapter_type=row.get("chapter_type"),
+                title=row["title"],
+                content=row["content"],
+                version_no=int(row.get("version_no", 1)),
+                created_at=row.get("created_at"),
+            )
+            for row in rows
+        ]
+
+    def get_chapter(
+        self,
+        *,
+        user_id: UUID,
+        chapter_id: UUID,
+    ) -> ChapterGenerateResponse:
+        stored = self._load_chapter_draft(user_id=user_id, chapter_id=chapter_id)
+        return ChapterGenerateResponse(
+            chapter_id=stored.id,
+            session_id=stored.session_id,
+            chapter_type=stored.chapter_type,
+            title=stored.title,
+            content=stored.content,
+            version_no=stored.version_no,
+            created_at=stored.created_at,
+        )
+
     def _resolve_memory_items(
         self,
         *,

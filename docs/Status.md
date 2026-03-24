@@ -1,387 +1,95 @@
 # Status.md
 
 ## Current project status
-Milestone 1 scaffold 는 완료됐고, 이후 마일스톤도 일부 선행 구현된 상태다.
-현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/voice/repeat-last`, `/safety/check`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` PATCH, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
+현재 저장소는 MVP 핵심 흐름 코드가 연결된 상태다.
+
+구현 완료 범위:
+- FastAPI server
+  - `/health`
+  - `/auth/sign-up`, `/auth/sign-in`, `/auth/refresh`, `/auth/me`
+  - `/sessions` 목록/생성/조회
+  - `/messages/{session_id}`
+  - `/voice/turn`, `/voice/repeat-last`
+  - `/memory/extract`
+  - `/chapters` 목록/생성/조회/수정/재생성
+  - `/book/compile`, `/book/versions`, `/book/versions/{book_id}`
+- Android app
+  - 이메일 로그인/회원가입 화면
+  - 로그인 세션 복구
+  - 홈에서 세션 생성/선택
+  - Voice Interview 실제 업로드/재생 흐름
+  - Draft 화면에서 chapter 생성/수정/재생성
+  - Book Preview 화면에서 chapter ordering 과 최종 버전 저장/조회
+- 문서
+  - API 문서 최신화
+  - DB schema 문서 최신화
+  - Supabase 적용용 SQL 추가
 
 ## Decisions made
-- 플랫폼: Android native Kotlin
-- backend: FastAPI
-- database/auth/storage: Supabase
-- llm 호출 위치: server only
-- MVP 인터랙션: 앱 내 push-to-talk 음성 인터뷰
-- 음성 파이프라인: STT -> text LLM -> TTS
-- 텍스트 로그는 항상 저장
-- 실시간 speech-to-speech 는 MVP에서 제외
-- Milestone 1 server 범위는 실행 가능한 FastAPI 앱과 `GET /health` 까지만 구현한다.
-- Milestone 1 app 범위는 접근성 우선 placeholder 화면과 단순 navigation 까지만 구현한다.
-- server 의 Supabase 연결은 `.env` 기반 설정 모듈과 최소 클라이언트 초기화 코드로 분리한다.
-- `/sessions` 구현은 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
-- `/messages/{session_id}` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
-- `/voice/turn` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
-- `/voice/repeat-last` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
-- `/memory/extract` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
-- `/chapters/generate` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
-- `/chapters/{chapter_id}` PATCH 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
-- OpenAI STT key 와 모델 설정은 server `.env` 로만 관리한다.
-- OpenAI safety check 는 Structured Outputs 기반 판단을 우선 사용하고, 실패 시 키워드 fallback 으로 보수적으로 처리한다.
-- OpenAI memory extraction 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
-- memory extraction 은 현재 `/voice/turn` 내부 자동 처리 대신 별도 `/memory/extract` 단계로 분리돼 있다.
-- OpenAI chapter generation 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
-- chapter 수정은 instruction 기반 revise 와 regenerate 흐름을 분리하고, PATCH 시 기존 row 를 갱신하면서 `version_no` 를 증가시킨다.
-- `/voice/turn` 에서 safety_mode 가 감지되면 일반 인터뷰 질문 대신 짧은 안전 안내 응답을 반환한다.
-- OpenAI TTS 결과는 서버 로컬 mp3 파일로 저장하고 `/generated-audio/...` 경로로 노출한다.
-- Android app 의 `/voice/turn` 연결은 테스트용 서버 주소, 사용자 ID, 세션 ID 입력값으로 동작시킨다.
+- 앱은 서버의 `/auth/*` 엔드포인트를 통해 Supabase Auth 를 사용한다.
+- 서버는 Bearer token 기반 인증을 기본으로 하고, local 에서만 `X-User-Id` fallback 을 허용할 수 있다.
+- `/voice/turn` 안에서 memory extraction 을 자동 실행한다.
+- assistant 텍스트 응답 생성은 mock 대신 OpenAI text generation 으로 전환했다.
+- TTS 생성 파일은 로컬 디스크에 저장하되 `OPENAI_TTS_RETENTION_HOURS` 기준으로 오래된 파일을 정리한다.
+- 최종 자서전 저장은 `autobiography_versions.chapter_ids` 에 chapter 순서를 함께 저장한다.
 
 ## Done
-- 프로젝트 문서 초안 작성
-- MVP 범위 정의
-- 마일스톤 계획 수립
-- 노인 대상 음성 UX 원칙 정의
-- 안전 대응 기본 원칙 정의
-- `server/` FastAPI 최소 구조 정리
-- `GET /health` 엔드포인트 확인
-- `server/requirements.txt` 정리
-- 서버 import 확인 및 `/health` smoke test 통과
-- `server/.env.example` 추가
-- Supabase 설정 모듈(`app.core.config`) 추가
-- Supabase 최소 클라이언트 초기화 모듈(`app.db.supabase`) 추가
-- 설정 import 및 Supabase 클라이언트 초기화 확인
-- `POST /sessions`, `GET /sessions/{session_id}` request/response schema 추가
-- Session service 계층과 기본 에러 처리 추가
-- `/sessions` route smoke test 확인
-- `GET /messages/{session_id}` response schema 추가
-- Message service 계층과 기본 에러 처리 추가
-- 세션 소유권 확인 후 메시지 `created_at` 오름차순 조회 추가
-- `/messages` route smoke test 확인
-- `POST /voice/turn` multipart 입력 처리 추가
-- STT, 텍스트 응답 생성, TTS service 인터페이스와 mock 구현 추가
-- transcript 저장과 assistant 메시지 저장을 포함한 VoiceTurn service 추가
-- `/voice/turn` route smoke test 확인
-- `POST /voice/repeat-last` route 추가
-- 세션의 마지막 assistant message 조회와 mp3 재사용 또는 재생성 흐름 추가
-- app 다시 듣기 버튼을 `/voice/repeat-last` 호출 기반으로 연결
-- 마지막 assistant 텍스트와 오디오 경로를 다시 불러와 `MediaPlayer` 재생까지 연결
-- `/voice/repeat-last` route smoke test 확인
-- `POST /memory/extract` request/response schema 추가
-- OpenAI memory extraction service 와 Structured Outputs Pydantic schema 추가
-- memory_items 저장 service 와 fallback raw_text 저장 처리 추가
-- `/memory/extract` route smoke test 확인
-- `POST /chapters/generate` request/response schema 추가
-- OpenAI chapter generation service 와 Structured Outputs Pydantic schema 추가
-- chapter_drafts 저장 service 추가
-- `/chapters/generate` route smoke test 확인
-- `PATCH /chapters/{chapter_id}` request schema 와 기본 에러 처리 추가
-- OpenAI chapter revision service 와 Structured Outputs Pydantic schema 파싱 추가
-- instruction 기반 revise 와 session 기반 regenerate 흐름 분리 추가
-- chapter PATCH 시 기존 row 갱신 + `version_no` 증가 정책 추가
-- `/chapters/{chapter_id}` route smoke test 확인
-- OpenAI safety check service 와 Structured Outputs Pydantic schema 파싱 추가
-- safety check 실패 시 키워드 fallback 검사 추가
-- `POST /safety/check` route 추가
-- `/voice/turn` 에 safety_mode 분기 추가
-- 고위험 발화 시 일반 인터뷰 응답 대신 안전 안내 응답 반환 추가
-- user / assistant 메시지 저장과 조회 응답에 `safety_mode` 표시 추가
-- safety service, `/safety/check`, `/voice/turn` safety branch smoke test 확인
-- OpenAI speech-to-text service 추가
-- `UploadedAudio`, `SpeechToTextResult` 타입 확장
-- `/voice/turn` 기본 STT 를 OpenAI service 로 교체
-- OpenAI STT service 단위 smoke test 확인
-- OpenAI text-to-speech service 추가
-- `TextToSpeechResult` 에 mp3 파일 경로, 포맷, content type 정의 추가
-- `/voice/turn` 기본 TTS 를 OpenAI service 로 교체
-- FastAPI 정적 경로 `/generated-audio` 추가
-- OpenAI TTS service 단위 smoke test 확인
-- Android app 에 `/voice/turn` multipart 업로드 클라이언트 추가
-- Voice Interview 화면에 서버 주소, 사용자 ID, 세션 ID 입력 필드 추가
-- 업로드 로딩, transcript 표시, assistant 텍스트 표시, 실패 상태 표시 추가
-- assistant 오디오 응답 URL 표시와 `MediaPlayer` 재생 연결 지점 추가
-- Android app 기본 프로젝트 구조 생성
-- Login, Home, Voice Interview, Draft, Book Preview placeholder 화면 추가
-- Compose 기반 단일 Activity 와 navigation 구조 추가
-- 이메일 로그인 입력 필드, 로그인 버튼, 로딩/실패 placeholder 상태 추가
-- 로그인 ViewModel 과 placeholder AuthRepository 구조 추가
-- 로그인 성공 시 Home 화면 이동 흐름 추가
-- Voice Interview ViewModel 과 상태 구조 추가
-- 큰 마이크 버튼, 현재 상태, 마지막 질문, 인식 결과, 다시 듣기, 다시 말하기, 세션 종료 UI 연결
-- Voice Interview placeholder 이벤트 흐름(듣기 -> 변환 -> 답변 -> 재생 -> 대기) 추가
-- `RECORD_AUDIO` 권한 요청 흐름 추가
-- 권한 거부 상태 UI 및 재요청 흐름 추가
-- MediaRecorder 기반 시작/중지 뼈대와 cache 임시 파일 저장 구조 추가
-- `:app:compileDebugKotlin`, `:app:assembleDebug` 검증 통과
-
-## In progress
-- 없음
+- server auth service / route 추가
+- auth token 기반 현재 사용자 확인 dependency 추가
+- profiles upsert service 추가
+- sessions 목록 API 추가
+- chapters 목록 / 단건 조회 API 추가
+- book compile / list / get API 추가
+- OpenAI text generation service 추가
+- `/voice/turn` memory 자동 추출 연결
+- TTS 만료 파일 정리 정책 추가
+- Android app placeholder 로그인 제거
+- Android app 세션 생성 / 선택 흐름 연결
+- Android app Voice Interview 를 실제 auth/session 기반으로 연결
+- Android app Draft 화면 chapter API 연결
+- Android app Book Preview 화면 book API 연결
+- `server/sql/mvp_schema.sql` 추가
+- `docs/API.md`, `docs/DB_SCHEMA.md`, `docs/Status.md` 최신화
 
 ## Remaining issues
-- Supabase 스키마와 인증은 아직 구현되지 않았다.
-- 회원가입 흐름은 아직 없다.
-- `/voice/turn` 의 STT 와 TTS 는 OpenAI 기반이지만 assistant 텍스트 응답 생성은 아직 mock 구현이다.
-- safety 고위험 판단은 현재 명시적 위험 발화 중심이라 완곡한 표현이나 맥락형 발화는 실데이터 튜닝이 더 필요하다.
-- `/memory/extract` 는 OpenAI extraction 실패 시 raw_text 중심 fallback item 을 저장한다.
-- chapter PATCH 는 in-place update 정책이라 이전 버전 본문 자체는 별도 row 로 보존하지 않는다.
-- chapter regenerate 는 현재 `session_id` 가 저장된 chapter draft 에서만 지원한다.
-- `/voice/turn` 는 memory extraction 과 오디오 장기 저장 없이 최소 응답만 반환한다.
-- `/voice/repeat-last` 는 마지막 assistant message 가 없는 세션에서 `404` 를 반환한다.
-- safety 위험 발화 원문 최소 저장 정책은 아직 별도 마스킹 없이 transcript 원문 저장 단계다.
-- STT 결과 저장 전 확인 UX 와 `"맞나요?"` 확인 질문 흐름은 아직 없다.
-- 2~3회 연속 인식 실패 카운트 기반 복구와 텍스트 확인 유도는 아직 없다.
-- TTS 파일은 현재 서버 로컬 디스크에 저장되며 만료/정리 정책이 아직 없다.
-- OpenAI TTS voices 는 영어 최적화 기준이라 한국어 음성 품질과 속도는 실기기 테스트가 필요하다.
-- app 의 voice 업로드는 현재 실제 로그인/세션 생성 연동이 없어서 사용자 ID 와 세션 ID 를 수동 입력해야 한다.
-- app 의 오디오 응답 재생은 연결 지점까지 구현했지만, 한국어 음성 품질과 로컬 서버 네트워크 조건은 수동 청취 테스트가 필요하다.
-- `autobiography_versions` 저장과 `/book/compile` API 는 아직 없다.
-- book compile 쪽 DB 접근용 service/repository 계층은 아직 없다.
-- 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
-- Voice Interview 는 `/voice/turn` 업로드 흐름까지 연결했지만, 실제 auth/session 값을 자동 주입하는 연결은 아직 없다.
-- MediaRecorder 동작과 권한 UX 는 실기기 확인이 아직 없다.
-- Draft, Book Preview 화면은 아직 실제 데이터 연결이 없다.
+- `server/.env` 의 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY` 는 현재 placeholder 상태라 실서버 호출은 바로 동작하지 않는다.
+- Supabase 프로젝트에 SQL 을 실제 적용하지 않았다.
+- 이메일 확인이 켜져 있으면 실제 메일 수신/클릭 확인이 필요하다.
+- 실기기에서 MediaRecorder, 한국어 STT/TTS 품질, 네트워크 지연을 아직 검증하지 못했다.
+- 안전 판단 품질은 실제 사용자 발화 로그 기준 추가 튜닝 여지가 있다.
 
 ## Next
-1. Supabase 스키마 초안 작성
-2. 로그인 화면에 실제 Supabase Auth 연동
-3. app 의 로그인/세션 생성 흐름과 `/voice/turn` 입력값을 실제 auth/session 데이터로 연결
-4. app Draft 화면에서 chapter 생성 / 수정 / 재생성 흐름 연결
-5. placeholder 화면을 실제 데이터 흐름과 연결
+1. `server/sql/mvp_schema.sql` 을 실제 Supabase SQL Editor 에 적용
+2. `server/.env` 를 실제 값으로 교체
+3. 서버 실행 후 앱에서 실제 회원가입/로그인/end-to-end 확인
+4. 실기기에서 마이크 권한, 녹음, TTS 청취 테스트
+5. production 서버 주소 확정 후 앱 기본 서버 주소 반영
 
 ## Risks
-- 범위가 커질 가능성
-- 음성 UX를 너무 복잡하게 설계할 가능성
-- 한국어 TTS 품질이 기대보다 떨어질 가능성
-- 실기기 테스트가 늦어지면 음성 관련 문제를 늦게 발견할 수 있음
+- Supabase 이메일 확인 정책에 따라 회원가입 UX 가 달라질 수 있음
+- 한국어 TTS 음색과 속도는 OpenAI voice 선택에 따라 추가 조정이 필요할 수 있음
+- 실사용 데이터에서 안전 표현, 방언, 불완전 발화 처리 튜닝이 필요할 수 있음
 
-## Run / validation
-app 실행:
+## Validation
+app:
 1. `cd app`
-2. `ANDROID_HOME=/Users/player7571/Library/Android/sdk ANDROID_SDK_ROOT=/Users/player7571/Library/Android/sdk ./gradlew :app:assembleDebug`
+2. `ANDROID_HOME=/Users/player7571/Library/Android/sdk ANDROID_SDK_ROOT=/Users/player7571/Library/Android/sdk ./gradlew :app:compileDebugKotlin`
+3. `ANDROID_HOME=/Users/player7571/Library/Android/sdk ANDROID_SDK_ROOT=/Users/player7571/Library/Android/sdk ./gradlew :app:assembleDebug`
 
-app 검증:
-- Kotlin 컴파일 확인: `./gradlew :app:compileDebugKotlin`
-- Debug 빌드 확인: `./gradlew :app:assembleDebug` 성공
-- Voice Interview 수동 테스트:
-- server 에서 `uvicorn app.main:app --reload` 실행
-- 별도 터미널에서 같은 `X-User-Id` 로 세션을 먼저 생성해 `session_uuid` 확보
-- Android Emulator 기준 서버 주소에 `http://10.0.2.2:8000` 입력
-- app Voice Interview 화면에서 사용자 ID 와 세션 ID 입력
-- 마이크 권한 허용 후 짧게 녹음하고 업로드
-- 업로드 중 로딩 상태, transcript 표시, assistant 텍스트 표시 확인
-- 서버를 중지하거나 잘못된 주소를 넣어 실패 상태 카드 표시 확인
-- 다시 듣기 버튼으로 mp3 재생 연결이 시도되는지 확인
-
-server .env 항목:
-- `APP_ENV=local`
-- `SUPABASE_URL=https://your-project-ref.supabase.co`
-- `SUPABASE_ANON_KEY=your_supabase_anon_key`
-- `SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key`
-- `OPENAI_API_KEY=your_openai_api_key`
-- `OPENAI_STT_MODEL=gpt-4o-transcribe`
-- `OPENAI_STT_LANGUAGE=ko`
-- `OPENAI_STT_PROMPT=optional_stt_prompt`
-- `OPENAI_MEMORY_MODEL=gpt-4.1-mini`
-- `OPENAI_MEMORY_PROMPT=optional_memory_prompt`
-- `OPENAI_CHAPTER_MODEL=gpt-4.1-mini`
-- `OPENAI_CHAPTER_PROMPT=optional_chapter_prompt`
-- `OPENAI_SAFETY_MODEL=gpt-4.1-mini`
-- `OPENAI_SAFETY_PROMPT=optional_safety_prompt`
-- `OPENAI_TTS_MODEL=gpt-4o-mini-tts`
-- `OPENAI_TTS_VOICE=coral`
-- `OPENAI_TTS_FORMAT=mp3`
-- `OPENAI_TTS_PUBLIC_PATH=/generated-audio`
-- `OPENAI_TTS_OUTPUT_DIR=.generated-audio`
-- `OPENAI_TTS_INSTRUCTIONS=optional_tts_instructions`
-
-server 실행:
+server:
 1. `cd server`
-2. `.env.example` 을 참고해 `.env` 작성
-3. `python3 -m venv .venv`
-4. `source .venv/bin/activate`
-5. `pip install -r requirements.txt`
-6. `uvicorn app.main:app --reload`
-7. `curl http://127.0.0.1:8000/health`
+2. `python3 -m venv .venv`
+3. `source .venv/bin/activate`
+4. `pip install -r requirements.txt`
+5. `.env.example` 기준으로 `.env` 작성
+6. `python -m compileall app`
+7. `python -c "from app.main import app; print(app.title)"`
+8. `uvicorn app.main:app --reload`
+9. `curl http://127.0.0.1:8000/health`
 
-server 검증:
-- import 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.main import app; print(app.title)"`
-- 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().app_env)"`
-- Supabase 클라이언트 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.db.supabase import get_supabase_anon_client; print(type(get_supabase_anon_client()).__name__)"`
-- OpenAI STT 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().openai_stt_model)"`
-- OpenAI memory extraction 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().openai_memory_model)"`
-- OpenAI chapter generation 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().openai_chapter_model)"`
-- OpenAI TTS 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().openai_tts_model, get_settings().openai_tts_voice)"`
-- `/health` 응답 확인: `{"status":"ok"}`
-- 세션 생성 예시: `curl -X POST http://127.0.0.1:8000/sessions -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"title":"어린 시절 인터뷰","theme":"childhood"}'`
-- 세션 조회 예시: `curl http://127.0.0.1:8000/sessions/<session_uuid> -H "X-User-Id: <user_uuid>"`
-- 메시지 조회 예시: `curl http://127.0.0.1:8000/messages/<session_uuid> -H "X-User-Id: <user_uuid>"`
-- 음성 턴 예시: `curl -X POST http://127.0.0.1:8000/voice/turn -H "X-User-Id: <user_uuid>" -F "session_id=<session_uuid>" -F "audio_file=@sample.m4a" -F "language_hint=ko"`
-- 마지막 assistant 다시 듣기 예시: `curl -X POST http://127.0.0.1:8000/voice/repeat-last -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"session_id":"<session_uuid>"}'`
-- safety 검사 예시: `curl -X POST http://127.0.0.1:8000/safety/check -H "Content-Type: application/json" -d '{"text":"숨이 너무 차고 가슴이 아파요."}'`
-- memory 추출 예시: `curl -X POST http://127.0.0.1:8000/memory/extract -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"session_id":"<session_uuid>","message_id":"<message_uuid>"}'`
-- chapter 생성 예시: `curl -X POST http://127.0.0.1:8000/chapters/generate -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"chapter_type":"childhood","session_id":"<session_uuid>"}'`
-- chapter 수정 예시: `curl -X PATCH http://127.0.0.1:8000/chapters/<chapter_uuid> -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"instruction":"조금 더 담백하고 차분한 문체로 고쳐줘"}'`
-- chapter 재생성 예시: `curl -X PATCH http://127.0.0.1:8000/chapters/<chapter_uuid> -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"regenerate":true}'`
-- OpenAI STT unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.stt_service import OpenAISpeechToTextService; print(OpenAISpeechToTextService.__name__)"`
-- OpenAI safety check unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.safety_check_service import OpenAISafetyCheckService; print(OpenAISafetyCheckService.__name__)"`
-- OpenAI memory extraction unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.memory_extraction_service import OpenAIMemoryExtractionService; print(OpenAIMemoryExtractionService.__name__)"`
-- OpenAI chapter generation unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.chapter_generation_service import OpenAIChapterGenerationService; print(OpenAIChapterGenerationService.__name__)"`
-- OpenAI chapter revision unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.chapter_revision_service import OpenAIChapterRevisionService; print(OpenAIChapterRevisionService.__name__)"`
-- OpenAI TTS unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.tts_service import OpenAITextToSpeechService; print(OpenAITextToSpeechService.__name__)"`
-- route smoke test:
-- `/sessions` dependency override 기반 `POST 201`, `GET 200`, `GET missing 404` 확인
-- `/messages` dependency override 기반 `GET 200`, 빈 세션 `GET 200 []`, 없는 세션 `GET 404` 확인
-- `/voice/repeat-last` dependency override 기반 `POST 200`, assistant 없음 `POST 404`, 없는 세션 `POST 404` 확인
-- `/safety/check` dependency override 기반 `POST 200`, 빈 text `POST 422` 확인
-- `/memory/extract` dependency override 기반 `POST 200`, message missing `POST 404` 확인
-- `/chapters/generate` dependency override 기반 `POST 200`, source missing `POST 404` 확인
-- `/chapters/{chapter_id}` dependency override 기반 `PATCH 200`, 없는 chapter `PATCH 404` 확인
-- `/voice/turn` dependency override 기반 multipart `POST 200`, 빈 파일 `POST 400`, 없는 세션 `POST 404` 확인
-- OpenAI STT service 는 fake OpenAI client 기반으로 transcript 반환과 빈 입력 예외를 확인
-- OpenAI safety check service 는 fake OpenAI client 기반으로 고위험 structured parse 와 fallback 키워드 경로를 확인
-- OpenAI memory extraction service 는 fake OpenAI client 기반으로 structured parse 결과와 failure 경로를 확인
-- OpenAI chapter generation service 는 fake OpenAI client 기반으로 structured parse 결과와 failure 경로를 확인
-- OpenAI chapter revision service 는 fake OpenAI client 기반으로 structured parse 결과를 확인
-- OpenAI TTS service 는 fake OpenAI client 기반으로 mp3 파일 저장과 URL 반환을 확인
-
-Safety test utterances:
-- `"숨이 너무 차고 가슴이 아파요."` -> `safety_mode=true`, 일반 인터뷰 대신 안전 안내 응답 기대
-- `"쓰러져서 일어날 수 없어요."` -> `safety_mode=true`, 119 또는 주변 도움 요청 안내 기대
-- `"죽고 싶어요. 사는 의미가 없어요."` -> `safety_mode=true`, 인터뷰 중단과 즉시 도움 요청 안내 기대
-- `"초등학교 때 여름마다 할머니 댁에 갔어요."` -> `safety_mode=false`, 일반 인터뷰 질문 응답 기대
-
-Manual repeat-last test:
-- server 에서 `uvicorn app.main:app --reload` 실행
-- `POST /sessions` 로 테스트 세션 생성
-- app 또는 `POST /voice/turn` 으로 assistant 응답 1건 이상 생성
-- `POST /voice/repeat-last` 호출 시 마지막 assistant `content` 와 `/generated-audio/...mp3` 경로가 오는지 확인
-- app Voice Interview 화면에서 같은 서버 주소, 사용자 ID, 세션 ID 입력 후 `다시 듣기` 버튼 탭
-- 현재 상태가 잠시 로딩으로 바뀐 뒤 마지막 질문 텍스트가 유지 또는 갱신되는지 확인
-- 이어서 assistant 오디오가 실제로 재생되는지 확인
-- assistant 메시지가 없는 새 세션에서 `다시 듣기` 버튼 또는 `POST /voice/repeat-last` 호출 시 실패 상태가 표시되는지 확인
-
-## Device test
-- 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음/업로드 흐름까지 검증했다.
-- 실기기 테스트 필요 항목:
-- `RECORD_AUDIO` 권한 허용 / 1회 거부 / 재요청 흐름 확인
-- 녹음 시작 후 중지 시 `cache/voice-recordings/*.m4a` 임시 파일 생성 확인
-- 너무 짧은 녹음에서도 앱이 비정상 종료하지 않는지 확인
-- `/voice/turn` 업로드 후 transcript 와 assistant 텍스트가 정상 표시되는지 확인
-- `/generated-audio/...mp3` 응답이 실제 기기에서 재생되는지 확인
-- 세션 종료 시 진행 중 녹음 정리 동작 확인
-- 실제 기기 마이크 품질과 MediaRecorder 시작/중지 타이밍 확인
-
-## Changed files
-- `server/requirements.txt`
-- `server/.gitignore`
-- `server/.env.example`
-- `server/app/core/__init__.py`
-- `server/app/core/config.py`
-- `server/app/db/__init__.py`
-- `server/app/db/supabase.py`
-- `server/app/api/router.py`
-- `server/app/api/dependencies/__init__.py`
-- `server/app/api/dependencies/auth.py`
-- `server/app/api/dependencies/services.py`
-- `server/app/api/routes/chapters.py`
-- `server/app/api/routes/memory.py`
-- `server/app/api/routes/messages.py`
-- `server/app/api/routes/safety.py`
-- `server/app/api/routes/sessions.py`
-- `server/app/api/routes/voice.py`
-- `server/app/api/schemas/__init__.py`
-- `server/app/api/schemas/chapter.py`
-- `server/app/api/schemas/memory.py`
-- `server/app/api/schemas/message.py`
-- `server/app/api/schemas/safety.py`
-- `server/app/api/schemas/session.py`
-- `server/app/api/schemas/voice.py`
-- `server/app/services/__init__.py`
-- `server/app/services/chapter_generation_service.py`
-- `server/app/services/chapter_service.py`
-- `server/app/services/memory_extraction_service.py`
-- `server/app/services/memory_service.py`
-- `server/app/services/message_service.py`
-- `server/app/services/safety_check_service.py`
-- `server/app/services/session_service.py`
-- `server/app/services/stt_service.py`
-- `server/app/services/text_generation_service.py`
-- `server/app/services/tts_service.py`
-- `server/app/services/voice_turn_service.py`
-- `docs/API.md`
-- `app/.gitignore`
-- `app/settings.gradle.kts`
-- `app/build.gradle.kts`
-- `app/gradle.properties`
-- `app/gradlew`
-- `app/gradlew.bat`
-- `app/gradle/wrapper/gradle-wrapper.jar`
-- `app/gradle/wrapper/gradle-wrapper.properties`
-- `app/app/build.gradle.kts`
-- `app/app/proguard-rules.pro`
-- `app/app/src/main/AndroidManifest.xml`
-- `app/app/src/main/java/com/storyvenue/app/auth/AuthRepository.kt`
-- `app/app/src/main/java/com/storyvenue/app/auth/PlaceholderAuthRepository.kt`
-- `app/app/src/main/java/com/storyvenue/app/auth/LoginViewModel.kt`
-- `app/app/src/main/java/com/storyvenue/app/voice/AudioReplyPlayer.kt`
-- `app/app/src/main/java/com/storyvenue/app/voice/VoiceInterviewViewModel.kt`
-- `app/app/src/main/java/com/storyvenue/app/voice/VoiceRecorder.kt`
-- `app/app/src/main/java/com/storyvenue/app/voice/VoiceRecordingFileStore.kt`
-- `app/app/src/main/java/com/storyvenue/app/voice/VoiceTurnRepository.kt`
-- `app/app/src/main/res/values/strings.xml`
-- `app/app/src/main/java/com/storyvenue/app/MainActivity.kt`
-- `app/app/src/main/java/com/storyvenue/app/ui/StoryVenueApp.kt`
-
-## Notes
-- MVP는 텍스트 입력 대체가 아니라 음성 중심 인터뷰다.
-- 음성 발화도 반드시 텍스트로 함께 저장한다.
-- 안전 관련 발화는 자서전 인터뷰보다 우선한다.
-- 음성 기능은 실기기에서 검증해야 한다.
-- 로그인은 현재 placeholder 인증 흐름이며 실제 Supabase Auth 교체가 TODO 로 남아 있다.
-- Voice Interview 는 현재 `/voice/turn` 업로드, transcript 표시, assistant 텍스트 표시, 오디오 재생 연결 지점까지 구현했고 auth/session 자동 연결이 TODO 로 남아 있다.
-- `/sessions` 는 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
-- `/messages` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
-- `/memory/extract` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
-- `/chapters/generate` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
-- `/voice/turn` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
-- `/memory/extract` 는 현재 OpenAI Structured Outputs + fallback raw_text 저장으로 동작한다.
-- chapter generation 프롬프트는 chapter_type 을 장의 방향 힌트로만 쓰고, memory item 에 없는 사실을 추가하지 않도록 제한한다.
-- chapter generation 프롬프트는 title 과 content 를 분리된 구조화 출력으로 받아 저장과 이후 수정 흐름을 단순하게 유지한다.
-- chapter generation 프롬프트는 회고형이되 과장되지 않은 한국어 문체를 유지하고, 지나치게 시적이거나 감정 과장이 큰 표현을 피하도록 설계했다.
-- `/voice/turn` 의 STT 와 TTS 는 현재 OpenAI service 로 처리하고, assistant 텍스트 응답 생성은 아직 mock 구현이다.
-- 한국어 TTS voice 선택과 발화 속도는 실기기 청취 테스트 후 조정해야 한다.
-- Android app 의 Voice Interview 업로드는 현재 테스트용 서버 주소, 사용자 ID, 세션 ID 수동 입력 방식이다.
-
-## Demo scenario
-시작 상태:
-- server 가 로컬에서 실행 중이다.
-- 테스트용 `.env` 가 준비돼 있다.
-- app 이 실기기 또는 에뮬레이터에 설치돼 있다.
-- `POST /sessions` 로 미리 만든 `session_id` 1개를 준비한다.
-- 발표자는 테스트용 `user_id`, `session_id`, 서버 주소를 알고 있다.
-
-시연 순서:
-- Login 화면에서 이메일과 비밀번호를 입력하고 Home 으로 이동한다.
-- Home 에서 Voice Interview 로 들어간다.
-- 서버 주소, 사용자 ID, 세션 ID 를 입력한다.
-- 마이크 권한을 허용하고 짧게 녹음한 뒤 업로드한다.
-- transcript 표시, assistant 텍스트 표시, 상태 변화 표시를 보여준다.
-- `다시 듣기` 버튼으로 마지막 assistant 발화를 다시 불러오고 재생한다.
-- 필요하면 `다시 말하기` 버튼으로 한 번 더 녹음 업로드를 보여준다.
-- Draft 와 Book Preview placeholder 화면도 짧게 이동해 전체 흐름 방향을 보여준다.
-
-보여줄 핵심 기능:
-- 앱 로그인 placeholder 흐름
-- 음성 녹음과 `/voice/turn` 업로드
-- STT transcript 표시
-- assistant 텍스트 응답 표시
-- TTS 오디오 재생과 `다시 듣기`
-- 실패 상태와 권한 상태 표시
-
-음성 데모 실패 시 대체 시나리오:
-- 마이크 권한 거부 상태 UI 를 먼저 보여준다.
-- 잘못된 서버 주소를 넣어 실패 상태 카드를 보여준다.
-- 준비된 `curl` 예시로 `/voice/turn` 또는 `/voice/repeat-last` 응답 JSON 을 보여준다.
-- app 에서는 transcript, assistant 텍스트, 다시 듣기 흐름이 어떻게 연결되는지 화면 중심으로 설명한다.
-
-실기기 테스트 유의사항:
-- 한국어 TTS 품질과 속도는 실기기 청취 기준으로 확인한다.
-- 로컬 server 연결 시 Android Emulator 는 `http://10.0.2.2:8000` 를 사용하고, 실기기는 같은 네트워크와 방화벽 상태를 확인한다.
-- 녹음 권한 허용/거부, 짧은 녹음 시작/중지, 다시 듣기 재생 성공 여부를 발표 전 미리 확인한다.
-- 현재 app 은 테스트용 `user_id`, `session_id` 수동 입력 방식이므로 데모 전에 값을 준비해 둔다.
+실기기 테스트 필요 여부:
+- 필요
+- 마이크 권한 허용/거부
+- 3턴 이상 음성 인터뷰
+- chapter 생성/수정/재생성
+- book 저장 및 다시 조회

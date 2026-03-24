@@ -15,6 +15,24 @@ from app.services.session_service import (
 router = APIRouter(tags=["sessions"])
 
 
+@router.get(
+    "/sessions",
+    response_model=list[SessionResponse],
+    summary="List sessions",
+)
+def list_sessions(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session_service: Annotated[SessionService, Depends(get_session_service)],
+) -> list[SessionResponse]:
+    try:
+        return session_service.list_sessions(user_id=user_id)
+    except SessionPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list sessions.",
+        ) from exc
+
+
 @router.post(
     "/sessions",
     response_model=SessionResponse,

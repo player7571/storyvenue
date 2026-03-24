@@ -11,10 +11,13 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
     supabase_service_role_key: str | None = None
+    allow_dev_user_header: bool = True
     openai_api_key: str | None = None
     openai_stt_model: str = "gpt-4o-transcribe"
     openai_stt_language: str | None = "ko"
     openai_stt_prompt: str | None = None
+    openai_text_model: str = "gpt-4.1-mini"
+    openai_text_prompt: str | None = None
     openai_memory_model: str = "gpt-4.1-mini"
     openai_memory_prompt: str | None = None
     openai_chapter_model: str = "gpt-4.1-mini"
@@ -27,6 +30,7 @@ class Settings(BaseSettings):
     openai_tts_public_path: str = "/generated-audio"
     openai_tts_output_dir: str = ".generated-audio"
     openai_tts_instructions: str | None = None
+    openai_tts_retention_hours: int = 24
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -80,6 +81,7 @@ class OpenAITextToSpeechService(TextToSpeechService):
             if instructions is not None
             else settings.openai_tts_instructions or DEFAULT_TTS_INSTRUCTIONS
         )
+        self.retention_hours = settings.openai_tts_retention_hours
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def synthesize(
@@ -92,6 +94,7 @@ class OpenAITextToSpeechService(TextToSpeechService):
         if not text.strip():
             raise TextToSpeechServiceError("Assistant text is empty.")
 
+        self._cleanup_old_files()
         output_path = self._build_output_path(
             session_id=session_id,
             message_id=message_id,
@@ -136,6 +139,7 @@ class OpenAITextToSpeechService(TextToSpeechService):
         message_id: UUID,
         text: str,
     ) -> TextToSpeechResult:
+        self._cleanup_old_files()
         output_path = self._build_output_path(
             session_id=session_id,
             message_id=message_id,
@@ -174,6 +178,23 @@ class OpenAITextToSpeechService(TextToSpeechService):
         message_id: UUID,
     ) -> str:
         return f"{self.public_path}/{session_id}/{message_id}.{self.audio_format}"
+
+    def _cleanup_old_files(self) -> None:
+        if self.retention_hours <= 0:
+            return
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.retention_hours)
+        for path in self.output_dir.rglob(f"*.{self.audio_format}"):
+            try:
+                modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+            except FileNotFoundError:
+                continue
+
+            if modified_at < cutoff:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    continue
 
 
 class MockTextToSpeechService(TextToSpeechService):

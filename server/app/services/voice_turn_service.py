@@ -3,9 +3,11 @@ from uuid import UUID, uuid4
 
 from supabase import Client
 
+from app.api.schemas.memory import MemoryExtractRequest
 from app.api.schemas.message import MessageResponse
 from app.api.schemas.voice import VoiceTurnResponse
 from app.db.supabase import get_supabase_service_role_client
+from app.services.memory_service import MemoryConfigurationError, MemoryService, MemoryServiceError
 from app.services.safety_check_service import (
     OpenAISafetyCheckService,
     SafetyCheckConfigurationError,
@@ -25,7 +27,9 @@ from app.services.stt_service import (
     UploadedAudio,
 )
 from app.services.text_generation_service import (
-    MockTextGenerationService,
+    ConversationTurn,
+    OpenAITextGenerationService,
+    TextGenerationConfigurationError,
     TextGenerationService,
     TextGenerationServiceError,
 )
@@ -74,6 +78,7 @@ class VoiceTurnService:
         stt_service: SpeechToTextService | None = None,
         text_generation_service: TextGenerationService | None = None,
         safety_check_service: SafetyCheckService | None = None,
+        memory_service: MemoryService | None = None,
         tts_service: TextToSpeechService | None = None,
     ) -> None:
         try:
@@ -86,12 +91,19 @@ class VoiceTurnService:
             self.stt_service = stt_service or OpenAISpeechToTextService()
         except SpeechToTextConfigurationError as exc:
             raise VoiceTurnConfigurationError(str(exc)) from exc
-        self.text_generation_service = (
-            text_generation_service or MockTextGenerationService()
-        )
+        try:
+            self.text_generation_service = (
+                text_generation_service or OpenAITextGenerationService()
+            )
+        except TextGenerationConfigurationError as exc:
+            raise VoiceTurnConfigurationError(str(exc)) from exc
         try:
             self.safety_check_service = safety_check_service or OpenAISafetyCheckService()
         except SafetyCheckConfigurationError as exc:
+            raise VoiceTurnConfigurationError(str(exc)) from exc
+        try:
+            self.memory_service = memory_service or MemoryService(client=self.client)
+        except MemoryConfigurationError as exc:
             raise VoiceTurnConfigurationError(str(exc)) from exc
         try:
             self.tts_service = tts_service or OpenAITextToSpeechService()
@@ -126,12 +138,29 @@ class VoiceTurnService:
             )
 
             if safety_result.safety_mode:
+                memory_items_created = 0
+            else:
+                memory_result = self.memory_service.extract_and_store(
+                    user_id=user_id,
+                    request=MemoryExtractRequest(
+                        session_id=session_id,
+                        message_id=user_message.id,
+                    ),
+                )
+                memory_items_created = len(memory_result.items)
+
+            if safety_result.safety_mode:
                 assistant_text = safety_result.assistant_guidance()
                 assistant_safety_mode = True
             else:
+                conversation_history = self._load_recent_conversation(
+                    user_id=user_id,
+                    session_id=session_id,
+                )
                 assistant_result = self.text_generation_service.generate_reply(
                     session_id=session_id,
                     transcript=transcript_result.transcript,
+                    conversation_history=conversation_history,
                 )
                 assistant_text = assistant_result.text
                 assistant_safety_mode = assistant_result.safety_mode
@@ -151,6 +180,7 @@ class VoiceTurnService:
                 text=assistant_message.content,
             )
         except (
+            MemoryServiceError,
             SafetyCheckServiceError,
             SpeechToTextServiceError,
             TextGenerationServiceError,
@@ -163,7 +193,7 @@ class VoiceTurnService:
             assistant_message=assistant_message,
             transcript=transcript_result.transcript,
             audio_reply_url=tts_result.audio_reply_url,
-            memory_items_created=0,
+            memory_items_created=memory_items_created,
             safety_mode=safety_result.safety_mode or assistant_safety_mode,
         )
 
@@ -190,6 +220,34 @@ class VoiceTurnService:
             raise VoiceTurnProcessingError(str(exc)) from exc
 
         return assistant_message, tts_result.audio_reply_url
+
+    def _load_recent_conversation(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+    ) -> list[ConversationTurn]:
+        try:
+            response = (
+                self.client.table("messages")
+                .select("role, content")
+                .eq("session_id", str(session_id))
+                .eq("user_id", str(user_id))
+                .order("created_at", desc=True)
+                .limit(6)
+                .execute()
+            )
+        except Exception as exc:  # pragma: no cover - external client failure path
+            raise VoiceTurnProcessingError(str(exc)) from exc
+
+        rows = response.data or []
+        return [
+            ConversationTurn(
+                role=row.get("role", "assistant"),
+                content=row.get("content", ""),
+            )
+            for row in reversed(rows)
+        ]
 
     def _ensure_session_exists(
         self,

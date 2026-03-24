@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Query
 
 from app.api.dependencies.auth import get_current_user_id
 from app.api.dependencies.services import get_chapter_service
@@ -20,6 +21,25 @@ from app.services.chapter_service import (
 )
 
 router = APIRouter(tags=["chapters"])
+
+
+@router.get(
+    "/chapters",
+    response_model=list[ChapterGenerateResponse],
+    summary="List chapter drafts",
+)
+def list_chapters(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    chapter_service: Annotated[ChapterService, Depends(get_chapter_service)],
+    session_id: UUID | None = Query(default=None),
+) -> list[ChapterGenerateResponse]:
+    try:
+        return chapter_service.list_chapters(user_id=user_id, session_id=session_id)
+    except ChapterPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list chapter drafts.",
+        ) from exc
 
 
 @router.post(
@@ -92,4 +112,28 @@ def update_chapter(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update chapter draft.",
+        ) from exc
+
+
+@router.get(
+    "/chapters/{chapter_id}",
+    response_model=ChapterGenerateResponse,
+    summary="Get chapter draft",
+)
+def get_chapter(
+    chapter_id: UUID,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    chapter_service: Annotated[ChapterService, Depends(get_chapter_service)],
+) -> ChapterGenerateResponse:
+    try:
+        return chapter_service.get_chapter(user_id=user_id, chapter_id=chapter_id)
+    except ChapterNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chapter not found.",
+        ) from exc
+    except ChapterPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch chapter draft.",
         ) from exc

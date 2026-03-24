@@ -22,8 +22,21 @@ def get_supabase_anon_client() -> Client:
     return _build_client(settings.supabase_anon_key, "SUPABASE_ANON_KEY")
 
 
+def create_supabase_anon_client() -> Client:
+    settings = get_settings()
+    return _build_client(settings.supabase_anon_key, "SUPABASE_ANON_KEY")
+
+
 @lru_cache
 def get_supabase_service_role_client() -> Client:
+    settings = get_settings()
+    return _build_client(
+        settings.supabase_service_role_key,
+        "SUPABASE_SERVICE_ROLE_KEY",
+    )
+
+
+def create_supabase_service_role_client() -> Client:
     settings = get_settings()
     return _build_client(
         settings.supabase_service_role_key,
