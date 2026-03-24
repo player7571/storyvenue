@@ -222,17 +222,32 @@ Response example:
 ## PATCH /chapters/{chapter_id}
 설명:
 - 장 초안 수정 또는 재생성 요청
+- 현재 구현은 `X-User-Id` header 가 필요하다.
+- 요청은 두 모드 중 하나만 사용한다.
+- `instruction` 이 있으면 기존 chapter draft 를 기준으로 수정한다.
+- `regenerate=true` 이면 기존 chapter 의 `session_id` 와 `chapter_type` 를 기준으로 다시 생성한다.
+- 현재 재생성은 `session_id` 가 저장된 chapter draft 에서만 지원한다.
+- 현재 PATCH 는 새 row 를 만들지 않고 기존 `chapter_drafts` row 를 갱신하며 `version_no` 를 1 증가시킨다.
 
 Request example:
 {
-  "instruction": "조금 더 따뜻한 문체로 다시 써줘"
+  "instruction": "조금 더 담백하고 차분한 문체로 고쳐줘"
+}
+
+또는
+{
+  "regenerate": true
 }
 
 Response example:
 {
   "chapter_id": "chapter_uuid",
+  "session_id": "session_uuid",
+  "chapter_type": "childhood",
   "title": "어린 시절",
-  "content": "수정된 본문..."
+  "content": "수정되거나 재생성된 본문...",
+  "version_no": 2,
+  "created_at": "2026-03-25T10:20:00Z"
 }
 
 ---

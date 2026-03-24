@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ChapterGenerateRequest(BaseModel):
@@ -30,3 +30,30 @@ class ChapterGenerateResponse(BaseModel):
     content: str
     version_no: int = 1
     created_at: datetime | None = None
+
+
+class ChapterUpdateRequest(BaseModel):
+    instruction: str | None = Field(default=None, max_length=1000)
+    regenerate: bool = False
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    @field_validator("instruction")
+    @classmethod
+    def normalize_instruction(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def validate_mode(self) -> "ChapterUpdateRequest":
+        if self.regenerate:
+            if self.instruction is not None:
+                raise ValueError("Do not provide instruction when regenerate is true.")
+            return self
+
+        if self.instruction is None:
+            raise ValueError("instruction is required when regenerate is false.")
+
+        return self

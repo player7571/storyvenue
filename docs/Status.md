@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/memory/extract`, `/chapters/generate`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
+현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` PATCH, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -21,9 +21,11 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/voice/turn` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/memory/extract` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/chapters/generate` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- `/chapters/{chapter_id}` PATCH 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - OpenAI STT key 와 모델 설정은 server `.env` 로만 관리한다.
 - OpenAI memory extraction 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
 - OpenAI chapter generation 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
+- chapter 수정은 instruction 기반 revise 와 regenerate 흐름을 분리하고, PATCH 시 기존 row 를 갱신하면서 `version_no` 를 증가시킨다.
 - OpenAI TTS 결과는 서버 로컬 mp3 파일로 저장하고 `/generated-audio/...` 경로로 노출한다.
 - Android app 의 `/voice/turn` 연결은 테스트용 서버 주소, 사용자 ID, 세션 ID 입력값으로 동작시킨다.
 
@@ -60,6 +62,11 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - OpenAI chapter generation service 와 Structured Outputs Pydantic schema 추가
 - chapter_drafts 저장 service 추가
 - `/chapters/generate` route smoke test 확인
+- `PATCH /chapters/{chapter_id}` request schema 와 기본 에러 처리 추가
+- OpenAI chapter revision service 와 Structured Outputs Pydantic schema 파싱 추가
+- instruction 기반 revise 와 session 기반 regenerate 흐름 분리 추가
+- chapter PATCH 시 기존 row 갱신 + `version_no` 증가 정책 추가
+- `/chapters/{chapter_id}` route smoke test 확인
 - OpenAI speech-to-text service 추가
 - `UploadedAudio`, `SpeechToTextResult` 타입 확장
 - `/voice/turn` 기본 STT 를 OpenAI service 로 교체
@@ -94,13 +101,14 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - Supabase 스키마와 인증은 아직 구현되지 않았다.
 - `/voice/turn` 의 STT 와 TTS 는 OpenAI 기반이지만 assistant 텍스트 응답 생성은 아직 mock 구현이다.
 - `/memory/extract` 는 OpenAI extraction 실패 시 raw_text 중심 fallback item 을 저장한다.
-- `/chapters/generate` 는 saved memory_items 기반 chapter draft 생성까지만 구현했고 수정 / 재생성은 아직 없다.
+- chapter PATCH 는 in-place update 정책이라 이전 버전 본문 자체는 별도 row 로 보존하지 않는다.
+- chapter regenerate 는 현재 `session_id` 가 저장된 chapter draft 에서만 지원한다.
 - `/voice/turn` 는 memory extraction, safety 판별, 오디오 장기 저장 없이 최소 응답만 반환한다.
 - TTS 파일은 현재 서버 로컬 디스크에 저장되며 만료/정리 정책이 아직 없다.
 - OpenAI TTS voices 는 영어 최적화 기준이라 한국어 음성 품질과 속도는 실기기 테스트가 필요하다.
 - app 의 voice 업로드는 현재 실제 로그인/세션 생성 연동이 없어서 사용자 ID 와 세션 ID 를 수동 입력해야 한다.
 - app 의 오디오 응답 재생은 연결 지점까지 구현했지만, 한국어 음성 품질과 로컬 서버 네트워크 조건은 수동 청취 테스트가 필요하다.
-- chapter revise, book compile 쪽 DB 접근용 service/repository 계층은 아직 없다.
+- book compile 쪽 DB 접근용 service/repository 계층은 아직 없다.
 - 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
 - Voice Interview 는 `/voice/turn` 업로드 흐름까지 연결했지만, 실제 auth/session 값을 자동 주입하는 연결은 아직 없다.
 - MediaRecorder 동작과 권한 UX 는 실기기 확인이 아직 없다.
@@ -110,7 +118,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 1. Supabase 스키마 초안 작성
 2. 로그인 화면에 실제 Supabase Auth 연동
 3. app 의 로그인/세션 생성 흐름과 `/voice/turn` 입력값을 실제 auth/session 데이터로 연결
-4. 서버의 chapter revise API 초안 구현
+4. app Draft 화면에서 chapter 생성 / 수정 / 재생성 흐름 연결
 5. placeholder 화면을 실제 데이터 흐름과 연결
 
 ## Risks
@@ -181,19 +189,24 @@ server 검증:
 - 음성 턴 예시: `curl -X POST http://127.0.0.1:8000/voice/turn -H "X-User-Id: <user_uuid>" -F "session_id=<session_uuid>" -F "audio_file=@sample.m4a" -F "language_hint=ko"`
 - memory 추출 예시: `curl -X POST http://127.0.0.1:8000/memory/extract -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"session_id":"<session_uuid>","message_id":"<message_uuid>"}'`
 - chapter 생성 예시: `curl -X POST http://127.0.0.1:8000/chapters/generate -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"chapter_type":"childhood","session_id":"<session_uuid>"}'`
+- chapter 수정 예시: `curl -X PATCH http://127.0.0.1:8000/chapters/<chapter_uuid> -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"instruction":"조금 더 담백하고 차분한 문체로 고쳐줘"}'`
+- chapter 재생성 예시: `curl -X PATCH http://127.0.0.1:8000/chapters/<chapter_uuid> -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"regenerate":true}'`
 - OpenAI STT unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.stt_service import OpenAISpeechToTextService; print(OpenAISpeechToTextService.__name__)"`
 - OpenAI memory extraction unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.memory_extraction_service import OpenAIMemoryExtractionService; print(OpenAIMemoryExtractionService.__name__)"`
 - OpenAI chapter generation unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.chapter_generation_service import OpenAIChapterGenerationService; print(OpenAIChapterGenerationService.__name__)"`
+- OpenAI chapter revision unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.chapter_revision_service import OpenAIChapterRevisionService; print(OpenAIChapterRevisionService.__name__)"`
 - OpenAI TTS unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.tts_service import OpenAITextToSpeechService; print(OpenAITextToSpeechService.__name__)"`
 - route smoke test:
 - `/sessions` dependency override 기반 `POST 201`, `GET 200`, `GET missing 404` 확인
 - `/messages` dependency override 기반 `GET 200`, 빈 세션 `GET 200 []`, 없는 세션 `GET 404` 확인
 - `/memory/extract` dependency override 기반 `POST 200`, message missing `POST 404` 확인
 - `/chapters/generate` dependency override 기반 `POST 200`, source missing `POST 404` 확인
+- `/chapters/{chapter_id}` dependency override 기반 `PATCH 200`, 없는 chapter `PATCH 404` 확인
 - `/voice/turn` dependency override 기반 multipart `POST 200`, 빈 파일 `POST 400`, 없는 세션 `POST 404` 확인
 - OpenAI STT service 는 fake OpenAI client 기반으로 transcript 반환과 빈 입력 예외를 확인
 - OpenAI memory extraction service 는 fake OpenAI client 기반으로 structured parse 결과와 failure 경로를 확인
 - OpenAI chapter generation service 는 fake OpenAI client 기반으로 structured parse 결과와 failure 경로를 확인
+- OpenAI chapter revision service 는 fake OpenAI client 기반으로 structured parse 결과를 확인
 - OpenAI TTS service 는 fake OpenAI client 기반으로 mp3 파일 저장과 URL 반환을 확인
 
 ## Device test
