@@ -9,6 +9,11 @@ MVP 기준 핵심 테이블:
 - chapter_drafts
 - autobiography_versions
 
+아래는 target schema draft 기준 문서다.
+현재 구현과 직접 맞물린 흐름은 `sessions`, `messages`, `memory_items`, `chapter_drafts` 중심이며,
+`profiles` 와 `autobiography_versions` 는 아직 앱/API 흐름에 완전히 연결되지 않았다.
+실제 migration/RLS 적용 여부는 별도 확인이 필요하다.
+
 오디오 파일 자체는 MVP에서 장기 보관하지 않는 것을 기본 원칙으로 한다.
 필요 시 임시 저장 후 삭제 정책을 사용한다.
 

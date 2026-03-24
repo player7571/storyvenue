@@ -8,7 +8,7 @@
 - 앱은 Supabase Auth 로 로그인한다.
 - 서버는 인증된 사용자 기준으로 요청을 처리한다.
 - OpenAI API key 는 서버 환경변수에만 저장한다.
-- 현재 `/sessions`, `/messages`, `/voice/turn`, `/voice/repeat-last`, `/memory/extract`, `/chapters/generate` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- 현재 `/sessions`, `/messages`, `/voice/turn`, `/voice/repeat-last`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ---
 
@@ -99,6 +99,7 @@ Response example:
 - 현재 TTS 는 OpenAI text-to-speech service 를 호출하고 mp3 파일을 서버 로컬에 저장한 뒤 `/generated-audio/...` 경로를 반환한다.
 - 고위험 발화가 감지되면 일반 인터뷰 질문 대신 짧은 안전 안내 응답을 반환한다.
 - 현재 `memory_items_created` 는 항상 `0` 이다.
+- memory extraction 은 현재 `/voice/turn` 내부 자동 처리 대신 별도 `/memory/extract` 단계로 분리되어 있다.
 
 Request:
 - multipart/form-data
@@ -158,6 +159,7 @@ Response example:
 - 특정 메시지 또는 텍스트에서 memory item 추출
 - 디버그 또는 재처리 용도
 - 현재 구현은 `X-User-Id` header 가 필요하다.
+- 현재 `/voice/turn` 내부에서 자동 호출되지는 않는다.
 - 요청 본문은 `message_id` 또는 `text` 중 하나만 포함해야 한다.
 - 현재 extraction 은 OpenAI Structured Outputs 기반 Pydantic schema 파싱을 사용한다.
 - OpenAI 호출 또는 구조화 파싱이 실패하면 `raw_text` 만 보존한 fallback memory item 1건을 저장한다.
@@ -262,28 +264,10 @@ Response example:
 
 ---
 
-## POST /book/compile
-설명:
-- 장 초안을 모아 최종 자서전 버전 생성
-
-Request example:
-{
-  "chapter_ids": ["chapter_1", "chapter_2"]
-}
-
-Response example:
-{
-  "book_id": "book_uuid",
-  "title": "나의 이야기",
-  "content": "전체 자서전 본문..."
-}
-
----
-
 ## POST /safety/check
 설명:
 - 위험 신호 발화를 별도로 검사
-- 내부적으로는 /voice/turn 내에서 자동 호출될 수 있음
+- `/voice/turn` 에서도 같은 safety 판단 흐름을 사용하고, 이 endpoint 는 별도 검사나 디버그 용도로 쓸 수 있다.
 - 현재 구현은 OpenAI Structured Outputs 기반 판단을 우선 사용하고, 실패 시 키워드 fallback 을 사용한다.
 
 Request example:

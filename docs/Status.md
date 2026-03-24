@@ -1,7 +1,7 @@
 # Status.md
 
 ## Current project status
-Milestone 1 범위의 server/app 뼈대 구현 완료.
+Milestone 1 scaffold 는 완료됐고, 이후 마일스톤도 일부 선행 구현된 상태다.
 현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/voice/repeat-last`, `/safety/check`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` PATCH, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
@@ -26,6 +26,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - OpenAI STT key 와 모델 설정은 server `.env` 로만 관리한다.
 - OpenAI safety check 는 Structured Outputs 기반 판단을 우선 사용하고, 실패 시 키워드 fallback 으로 보수적으로 처리한다.
 - OpenAI memory extraction 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
+- memory extraction 은 현재 `/voice/turn` 내부 자동 처리 대신 별도 `/memory/extract` 단계로 분리돼 있다.
 - OpenAI chapter generation 은 Structured Outputs 기반 Pydantic schema 로 파싱한다.
 - chapter 수정은 instruction 기반 revise 와 regenerate 흐름을 분리하고, PATCH 시 기존 row 를 갱신하면서 `version_no` 를 증가시킨다.
 - `/voice/turn` 에서 safety_mode 가 감지되면 일반 인터뷰 질문 대신 짧은 안전 안내 응답을 반환한다.
@@ -114,6 +115,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 
 ## Remaining issues
 - Supabase 스키마와 인증은 아직 구현되지 않았다.
+- 회원가입 흐름은 아직 없다.
 - `/voice/turn` 의 STT 와 TTS 는 OpenAI 기반이지만 assistant 텍스트 응답 생성은 아직 mock 구현이다.
 - safety 고위험 판단은 현재 명시적 위험 발화 중심이라 완곡한 표현이나 맥락형 발화는 실데이터 튜닝이 더 필요하다.
 - `/memory/extract` 는 OpenAI extraction 실패 시 raw_text 중심 fallback item 을 저장한다.
@@ -122,10 +124,13 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/voice/turn` 는 memory extraction 과 오디오 장기 저장 없이 최소 응답만 반환한다.
 - `/voice/repeat-last` 는 마지막 assistant message 가 없는 세션에서 `404` 를 반환한다.
 - safety 위험 발화 원문 최소 저장 정책은 아직 별도 마스킹 없이 transcript 원문 저장 단계다.
+- STT 결과 저장 전 확인 UX 와 `"맞나요?"` 확인 질문 흐름은 아직 없다.
+- 2~3회 연속 인식 실패 카운트 기반 복구와 텍스트 확인 유도는 아직 없다.
 - TTS 파일은 현재 서버 로컬 디스크에 저장되며 만료/정리 정책이 아직 없다.
 - OpenAI TTS voices 는 영어 최적화 기준이라 한국어 음성 품질과 속도는 실기기 테스트가 필요하다.
 - app 의 voice 업로드는 현재 실제 로그인/세션 생성 연동이 없어서 사용자 ID 와 세션 ID 를 수동 입력해야 한다.
 - app 의 오디오 응답 재생은 연결 지점까지 구현했지만, 한국어 음성 품질과 로컬 서버 네트워크 조건은 수동 청취 테스트가 필요하다.
+- `autobiography_versions` 저장과 `/book/compile` API 는 아직 없다.
 - book compile 쪽 DB 접근용 service/repository 계층은 아직 없다.
 - 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
 - Voice Interview 는 `/voice/turn` 업로드 흐름까지 연결했지만, 실제 auth/session 값을 자동 주입하는 연결은 아직 없다.
