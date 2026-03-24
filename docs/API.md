@@ -8,6 +8,7 @@
 - 앱은 Supabase Auth 로 로그인한다.
 - 서버는 인증된 사용자 기준으로 요청을 처리한다.
 - OpenAI API key 는 서버 환경변수에만 저장한다.
+- 현재 `/sessions` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ---
 
@@ -25,6 +26,7 @@ Response example:
 ## POST /sessions
 설명:
 - 새 인터뷰 세션 생성
+- 현재 구현은 `X-User-Id` header 가 필요하다.
 
 Request example:
 {
@@ -37,6 +39,7 @@ Response example:
   "id": "session_uuid",
   "title": "어린 시절 인터뷰",
   "theme": "childhood",
+  "status": "active",
   "created_at": "2026-03-24T12:00:00Z"
 }
 
@@ -45,12 +48,15 @@ Response example:
 ## GET /sessions/{session_id}
 설명:
 - 특정 인터뷰 세션 조회
+- 현재 구현은 `X-User-Id` header 가 필요하다.
 
 Response example:
 {
   "id": "session_uuid",
   "title": "어린 시절 인터뷰",
-  "theme": "childhood"
+  "theme": "childhood",
+  "status": "active",
+  "created_at": "2026-03-24T12:00:00Z"
 }
 
 ---

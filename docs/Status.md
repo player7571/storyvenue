@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음 뼈대까지 준비된 최소 실행 단계다.
+현재는 FastAPI `/health`, `/sessions`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -16,6 +16,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - Milestone 1 server 범위는 실행 가능한 FastAPI 앱과 `GET /health` 까지만 구현한다.
 - Milestone 1 app 범위는 접근성 우선 placeholder 화면과 단순 navigation 까지만 구현한다.
 - server 의 Supabase 연결은 `.env` 기반 설정 모듈과 최소 클라이언트 초기화 코드로 분리한다.
+- `/sessions` 구현은 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ## Done
 - 프로젝트 문서 초안 작성
@@ -31,6 +32,9 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - Supabase 설정 모듈(`app.core.config`) 추가
 - Supabase 최소 클라이언트 초기화 모듈(`app.db.supabase`) 추가
 - 설정 import 및 Supabase 클라이언트 초기화 확인
+- `POST /sessions`, `GET /sessions/{session_id}` request/response schema 추가
+- Session service 계층과 기본 에러 처리 추가
+- `/sessions` route smoke test 확인
 - Android app 기본 프로젝트 구조 생성
 - Login, Home, Voice Interview, Draft, Book Preview placeholder 화면 추가
 - Compose 기반 단일 Activity 와 navigation 구조 추가
@@ -51,7 +55,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 ## Remaining issues
 - Supabase 스키마와 인증은 아직 구현되지 않았다.
 - 음성 업로드, STT, TTS, safety 관련 API는 아직 없다.
-- DB 접근용 repository/service 계층은 아직 없다.
+- messages, memory, chapter 쪽 DB 접근용 service/repository 계층은 아직 없다.
 - 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
 - Voice Interview 는 권한/녹음 뼈대까지 있으며 실제 STT, TTS, 서버 업로드 연결이 아직 없다.
 - MediaRecorder 동작과 권한 UX 는 실기기 확인이 아직 없다.
@@ -61,7 +65,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 1. Supabase 스키마 초안 작성
 2. 로그인 화면에 실제 Supabase Auth 연동
 3. Voice Interview 화면에 녹음 파일 업로드, STT/TTS 연결
-4. 서버의 세션/voice turn API 초안 구현
+4. 서버의 voice turn/messages API 초안 구현
 5. placeholder 화면을 실제 데이터 흐름과 연결
 
 ## Risks
@@ -99,6 +103,9 @@ server 검증:
 - 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().app_env)"`
 - Supabase 클라이언트 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.db.supabase import get_supabase_anon_client; print(type(get_supabase_anon_client()).__name__)"`
 - `/health` 응답 확인: `{"status":"ok"}`
+- 세션 생성 예시: `curl -X POST http://127.0.0.1:8000/sessions -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"title":"어린 시절 인터뷰","theme":"childhood"}'`
+- 세션 조회 예시: `curl http://127.0.0.1:8000/sessions/<session_uuid> -H "X-User-Id: <user_uuid>"`
+- route smoke test: dependency override 기반 `POST 201`, `GET 200`, `GET missing 404` 확인
 
 ## Device test
 - 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음 뼈대까지 검증했다.
@@ -117,6 +124,16 @@ server 검증:
 - `server/app/core/config.py`
 - `server/app/db/__init__.py`
 - `server/app/db/supabase.py`
+- `server/app/api/router.py`
+- `server/app/api/dependencies/__init__.py`
+- `server/app/api/dependencies/auth.py`
+- `server/app/api/dependencies/services.py`
+- `server/app/api/routes/sessions.py`
+- `server/app/api/schemas/__init__.py`
+- `server/app/api/schemas/session.py`
+- `server/app/services/__init__.py`
+- `server/app/services/session_service.py`
+- `docs/API.md`
 - `app/.gitignore`
 - `app/settings.gradle.kts`
 - `app/build.gradle.kts`
@@ -145,3 +162,4 @@ server 검증:
 - 음성 기능은 실기기에서 검증해야 한다.
 - 로그인은 현재 placeholder 인증 흐름이며 실제 Supabase Auth 교체가 TODO 로 남아 있다.
 - Voice Interview 는 현재 권한/녹음 뼈대까지 구현했고 실제 STT/TTS/업로드 연결이 TODO 로 남아 있다.
+- `/sessions` 는 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
