@@ -20,6 +20,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/messages/{session_id}` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/voice/turn` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - OpenAI STT key 와 모델 설정은 server `.env` 로만 관리한다.
+- OpenAI TTS 결과는 서버 로컬 mp3 파일로 저장하고 `/generated-audio/...` 경로로 노출한다.
 
 ## Done
 - 프로젝트 문서 초안 작성
@@ -50,6 +51,11 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `UploadedAudio`, `SpeechToTextResult` 타입 확장
 - `/voice/turn` 기본 STT 를 OpenAI service 로 교체
 - OpenAI STT service 단위 smoke test 확인
+- OpenAI text-to-speech service 추가
+- `TextToSpeechResult` 에 mp3 파일 경로, 포맷, content type 정의 추가
+- `/voice/turn` 기본 TTS 를 OpenAI service 로 교체
+- FastAPI 정적 경로 `/generated-audio` 추가
+- OpenAI TTS service 단위 smoke test 확인
 - Android app 기본 프로젝트 구조 생성
 - Login, Home, Voice Interview, Draft, Book Preview placeholder 화면 추가
 - Compose 기반 단일 Activity 와 navigation 구조 추가
@@ -69,8 +75,10 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 
 ## Remaining issues
 - Supabase 스키마와 인증은 아직 구현되지 않았다.
-- `/voice/turn` 의 STT 는 OpenAI 기반이지만 assistant 텍스트 응답 생성과 TTS 는 아직 mock 구현이다.
+- `/voice/turn` 의 STT 와 TTS 는 OpenAI 기반이지만 assistant 텍스트 응답 생성은 아직 mock 구현이다.
 - `/voice/turn` 는 memory extraction, safety 판별, 오디오 장기 저장 없이 최소 응답만 반환한다.
+- TTS 파일은 현재 서버 로컬 디스크에 저장되며 만료/정리 정책이 아직 없다.
+- OpenAI TTS voices 는 영어 최적화 기준이라 한국어 음성 품질과 속도는 실기기 테스트가 필요하다.
 - memory, chapter 쪽 DB 접근용 service/repository 계층은 아직 없다.
 - 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
 - Voice Interview 는 권한/녹음 뼈대까지 있으며 실제 STT, TTS, 서버 업로드 연결이 아직 없다.
@@ -80,7 +88,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 ## Next
 1. Supabase 스키마 초안 작성
 2. 로그인 화면에 실제 Supabase Auth 연동
-3. `/voice/turn` 의 assistant 텍스트 생성과 TTS mock service 를 실제 OpenAI 연동으로 교체
+3. `/voice/turn` 의 assistant 텍스트 생성 mock service 를 실제 OpenAI 연동으로 교체
 4. 서버의 memory, chapter API 초안 구현
 5. placeholder 화면을 실제 데이터 흐름과 연결
 
@@ -108,6 +116,12 @@ server .env 항목:
 - `OPENAI_STT_MODEL=gpt-4o-transcribe`
 - `OPENAI_STT_LANGUAGE=ko`
 - `OPENAI_STT_PROMPT=optional_stt_prompt`
+- `OPENAI_TTS_MODEL=gpt-4o-mini-tts`
+- `OPENAI_TTS_VOICE=coral`
+- `OPENAI_TTS_FORMAT=mp3`
+- `OPENAI_TTS_PUBLIC_PATH=/generated-audio`
+- `OPENAI_TTS_OUTPUT_DIR=.generated-audio`
+- `OPENAI_TTS_INSTRUCTIONS=optional_tts_instructions`
 
 server 실행:
 1. `cd server`
@@ -123,17 +137,20 @@ server 검증:
 - 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().app_env)"`
 - Supabase 클라이언트 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.db.supabase import get_supabase_anon_client; print(type(get_supabase_anon_client()).__name__)"`
 - OpenAI STT 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().openai_stt_model)"`
+- OpenAI TTS 설정 확인: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.core.config import get_settings; print(get_settings().openai_tts_model, get_settings().openai_tts_voice)"`
 - `/health` 응답 확인: `{"status":"ok"}`
 - 세션 생성 예시: `curl -X POST http://127.0.0.1:8000/sessions -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"title":"어린 시절 인터뷰","theme":"childhood"}'`
 - 세션 조회 예시: `curl http://127.0.0.1:8000/sessions/<session_uuid> -H "X-User-Id: <user_uuid>"`
 - 메시지 조회 예시: `curl http://127.0.0.1:8000/messages/<session_uuid> -H "X-User-Id: <user_uuid>"`
 - 음성 턴 예시: `curl -X POST http://127.0.0.1:8000/voice/turn -H "X-User-Id: <user_uuid>" -F "session_id=<session_uuid>" -F "audio_file=@sample.m4a" -F "language_hint=ko"`
 - OpenAI STT unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.stt_service import OpenAISpeechToTextService; print(OpenAISpeechToTextService.__name__)"`
+- OpenAI TTS unit test 예시: `PYTHONPATH=/Users/player7571/storyvenue/server python -c "from app.services.tts_service import OpenAITextToSpeechService; print(OpenAITextToSpeechService.__name__)"`
 - route smoke test:
 - `/sessions` dependency override 기반 `POST 201`, `GET 200`, `GET missing 404` 확인
 - `/messages` dependency override 기반 `GET 200`, 빈 세션 `GET 200 []`, 없는 세션 `GET 404` 확인
 - `/voice/turn` dependency override 기반 multipart `POST 200`, 빈 파일 `POST 400`, 없는 세션 `POST 404` 확인
 - OpenAI STT service 는 fake OpenAI client 기반으로 transcript 반환과 빈 입력 예외를 확인
+- OpenAI TTS service 는 fake OpenAI client 기반으로 mp3 파일 저장과 URL 반환을 확인
 
 ## Device test
 - 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음 뼈대까지 검증했다.
@@ -202,4 +219,5 @@ server 검증:
 - `/sessions` 는 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
 - `/messages` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
 - `/voice/turn` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
-- `/voice/turn` 의 STT 는 현재 OpenAI service 로 처리하고, assistant 텍스트 응답 생성과 TTS 는 아직 mock 구현이다.
+- `/voice/turn` 의 STT 와 TTS 는 현재 OpenAI service 로 처리하고, assistant 텍스트 응답 생성은 아직 mock 구현이다.
+- 한국어 TTS voice 선택과 발화 속도는 실기기 청취 테스트 후 조정해야 한다.

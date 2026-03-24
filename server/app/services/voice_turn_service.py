@@ -23,7 +23,8 @@ from app.services.text_generation_service import (
     TextGenerationServiceError,
 )
 from app.services.tts_service import (
-    MockTextToSpeechService,
+    OpenAITextToSpeechService,
+    TextToSpeechConfigurationError,
     TextToSpeechService,
     TextToSpeechServiceError,
 )
@@ -70,7 +71,10 @@ class VoiceTurnService:
         self.text_generation_service = (
             text_generation_service or MockTextGenerationService()
         )
-        self.tts_service = tts_service or MockTextToSpeechService()
+        try:
+            self.tts_service = tts_service or OpenAITextToSpeechService()
+        except TextToSpeechConfigurationError as exc:
+            raise VoiceTurnConfigurationError(str(exc)) from exc
 
     def process_turn(
         self,

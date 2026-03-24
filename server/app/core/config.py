@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     openai_stt_model: str = "gpt-4o-transcribe"
     openai_stt_language: str | None = "ko"
     openai_stt_prompt: str | None = None
+    openai_tts_model: str = "gpt-4o-mini-tts"
+    openai_tts_voice: str = "coral"
+    openai_tts_format: str = "mp3"
+    openai_tts_public_path: str = "/generated-audio"
+    openai_tts_output_dir: str = ".generated-audio"
+    openai_tts_instructions: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
@@ -22,6 +28,13 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @property
+    def openai_tts_output_dir_path(self) -> Path:
+        output_dir = Path(self.openai_tts_output_dir)
+        if not output_dir.is_absolute():
+            output_dir = ENV_FILE.parent / output_dir
+        return output_dir
 
 
 @lru_cache
