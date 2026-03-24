@@ -11,7 +11,8 @@ from app.services.session_service import (
     SessionService,
 )
 from app.services.stt_service import (
-    MockSpeechToTextService,
+    OpenAISpeechToTextService,
+    SpeechToTextConfigurationError,
     SpeechToTextService,
     SpeechToTextServiceError,
     UploadedAudio,
@@ -62,7 +63,10 @@ class VoiceTurnService:
             raise VoiceTurnConfigurationError(str(exc)) from exc
 
         self.session_service = SessionService(client=self.client)
-        self.stt_service = stt_service or MockSpeechToTextService()
+        try:
+            self.stt_service = stt_service or OpenAISpeechToTextService()
+        except SpeechToTextConfigurationError as exc:
+            raise VoiceTurnConfigurationError(str(exc)) from exc
         self.text_generation_service = (
             text_generation_service or MockTextGenerationService()
         )

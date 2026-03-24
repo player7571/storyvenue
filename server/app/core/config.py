@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
     supabase_service_role_key: str | None = None
+    openai_api_key: str | None = None
+    openai_stt_model: str = "gpt-4o-transcribe"
+    openai_stt_language: str | None = "ko"
+    openai_stt_prompt: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

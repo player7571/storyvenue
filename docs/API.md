@@ -90,7 +90,8 @@ Response example:
 - 음성 입력 한 턴을 처리
 - 서버가 STT -> 사용자 메시지 저장 -> assistant 응답 생성 -> assistant 저장 -> TTS 생성까지 수행
 - 현재 구현은 `X-User-Id` header 가 필요하다.
-- 현재 STT, 텍스트 응답 생성, TTS 는 mock service 기반이다.
+- 현재 STT 는 OpenAI speech-to-text service 를 호출한다.
+- 현재 assistant 텍스트 응답 생성과 TTS 는 mock service 기반이다.
 - 현재 `memory_items_created` 는 항상 `0` 이다.
 
 Request:
@@ -106,7 +107,7 @@ Response example:
   "user_message": {
     "id": "msg_user_uuid",
     "role": "user",
-    "content": "업로드된 음성의 임시 transcript 입니다.",
+    "content": "초등학교 때 여름마다 할머니 댁에 갔어요.",
     "created_at": "2026-03-25T09:00:00Z"
   },
   "assistant_message": {
@@ -115,7 +116,7 @@ Response example:
     "content": "말씀 감사합니다. 그때 가장 먼저 떠오르는 장소가 있나요?",
     "created_at": "2026-03-25T09:00:01Z"
   },
-  "transcript": "업로드된 음성의 임시 transcript 입니다.",
+  "transcript": "초등학교 때 여름마다 할머니 댁에 갔어요.",
   "audio_reply_url": "mock://tts/session_uuid/msg_assistant_uuid",
   "memory_items_created": 0,
   "safety_mode": false
