@@ -8,7 +8,7 @@
 - 앱은 Supabase Auth 로 로그인한다.
 - 서버는 인증된 사용자 기준으로 요청을 처리한다.
 - OpenAI API key 는 서버 환경변수에만 저장한다.
-- 현재 `/sessions` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- 현재 `/sessions`, `/messages` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ---
 
@@ -65,18 +65,21 @@ Response example:
 설명:
 - 특정 세션의 메시지 목록 조회
 - 사용자와 assistant 발화를 시간순으로 반환
+- 현재 구현은 `X-User-Id` header 가 필요하다.
 
 Response example:
 [
   {
     "id": "message_1",
     "role": "assistant",
-    "content": "안녕하세요. 오늘은 편하게 옛날 이야기를 나눠보겠습니다."
+    "content": "안녕하세요. 오늘은 편하게 옛날 이야기를 나눠보겠습니다.",
+    "created_at": "2026-03-24T12:01:00Z"
   },
   {
     "id": "message_2",
     "role": "user",
-    "content": "어릴 때는 시골에서 살았어요."
+    "content": "어릴 때는 시골에서 살았어요.",
+    "created_at": "2026-03-24T12:02:00Z"
   }
 ]
 
