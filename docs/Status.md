@@ -347,3 +347,41 @@ Manual repeat-last test:
 - `/voice/turn` 의 STT 와 TTS 는 현재 OpenAI service 로 처리하고, assistant 텍스트 응답 생성은 아직 mock 구현이다.
 - 한국어 TTS voice 선택과 발화 속도는 실기기 청취 테스트 후 조정해야 한다.
 - Android app 의 Voice Interview 업로드는 현재 테스트용 서버 주소, 사용자 ID, 세션 ID 수동 입력 방식이다.
+
+## Demo scenario
+시작 상태:
+- server 가 로컬에서 실행 중이다.
+- 테스트용 `.env` 가 준비돼 있다.
+- app 이 실기기 또는 에뮬레이터에 설치돼 있다.
+- `POST /sessions` 로 미리 만든 `session_id` 1개를 준비한다.
+- 발표자는 테스트용 `user_id`, `session_id`, 서버 주소를 알고 있다.
+
+시연 순서:
+- Login 화면에서 이메일과 비밀번호를 입력하고 Home 으로 이동한다.
+- Home 에서 Voice Interview 로 들어간다.
+- 서버 주소, 사용자 ID, 세션 ID 를 입력한다.
+- 마이크 권한을 허용하고 짧게 녹음한 뒤 업로드한다.
+- transcript 표시, assistant 텍스트 표시, 상태 변화 표시를 보여준다.
+- `다시 듣기` 버튼으로 마지막 assistant 발화를 다시 불러오고 재생한다.
+- 필요하면 `다시 말하기` 버튼으로 한 번 더 녹음 업로드를 보여준다.
+- Draft 와 Book Preview placeholder 화면도 짧게 이동해 전체 흐름 방향을 보여준다.
+
+보여줄 핵심 기능:
+- 앱 로그인 placeholder 흐름
+- 음성 녹음과 `/voice/turn` 업로드
+- STT transcript 표시
+- assistant 텍스트 응답 표시
+- TTS 오디오 재생과 `다시 듣기`
+- 실패 상태와 권한 상태 표시
+
+음성 데모 실패 시 대체 시나리오:
+- 마이크 권한 거부 상태 UI 를 먼저 보여준다.
+- 잘못된 서버 주소를 넣어 실패 상태 카드를 보여준다.
+- 준비된 `curl` 예시로 `/voice/turn` 또는 `/voice/repeat-last` 응답 JSON 을 보여준다.
+- app 에서는 transcript, assistant 텍스트, 다시 듣기 흐름이 어떻게 연결되는지 화면 중심으로 설명한다.
+
+실기기 테스트 유의사항:
+- 한국어 TTS 품질과 속도는 실기기 청취 기준으로 확인한다.
+- 로컬 server 연결 시 Android Emulator 는 `http://10.0.2.2:8000` 를 사용하고, 실기기는 같은 네트워크와 방화벽 상태를 확인한다.
+- 녹음 권한 허용/거부, 짧은 녹음 시작/중지, 다시 듣기 재생 성공 여부를 발표 전 미리 확인한다.
+- 현재 app 은 테스트용 `user_id`, `session_id` 수동 입력 방식이므로 데모 전에 값을 준비해 둔다.
