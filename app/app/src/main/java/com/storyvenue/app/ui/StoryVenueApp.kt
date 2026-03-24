@@ -46,6 +46,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.storyvenue.app.auth.LoginUiState
 import com.storyvenue.app.auth.LoginViewModel
+import com.storyvenue.app.voice.VoiceInterviewPhase
+import com.storyvenue.app.voice.VoiceInterviewUiState
+import com.storyvenue.app.voice.VoiceInterviewViewModel
 
 private enum class StoryVenueScreen(val route: String, val title: String) {
     Login("login", "로그인"),
@@ -112,9 +115,13 @@ private fun StoryVenueScaffold(navController: NavHostController) {
                 )
             }
             composable(StoryVenueScreen.VoiceInterview.route) {
-                VoiceInterviewPlaceholder(
-                    onBackHome = { navController.navigate(StoryVenueScreen.Home.route) },
-                    onOpenDraft = { navController.navigate(StoryVenueScreen.Draft.route) },
+                VoiceInterviewRoute(
+                    onBackHome = {
+                        navController.navigate(StoryVenueScreen.Home.route) {
+                            popUpTo(StoryVenueScreen.Home.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
             composable(StoryVenueScreen.Draft.route) {
@@ -225,28 +232,64 @@ private fun HomePlaceholder(
 }
 
 @Composable
-private fun VoiceInterviewPlaceholder(
+private fun VoiceInterviewRoute(
     onBackHome: () -> Unit,
-    onOpenDraft: () -> Unit,
+    voiceInterviewViewModel: VoiceInterviewViewModel = viewModel(),
+) {
+    val uiState = voiceInterviewViewModel.uiState
+
+    LaunchedEffect(uiState.isSessionEnded) {
+        if (uiState.isSessionEnded) {
+            onBackHome()
+            voiceInterviewViewModel.onSessionNavigationComplete()
+        }
+    }
+
+    VoiceInterviewScreen(
+        uiState = uiState,
+        onMicrophoneClick = voiceInterviewViewModel::onMicrophoneClick,
+        onRepeatLastQuestion = voiceInterviewViewModel::onRepeatLastQuestion,
+        onRetrySpeech = voiceInterviewViewModel::onRetrySpeech,
+        onEndSession = voiceInterviewViewModel::onEndSession,
+    )
+}
+
+@Composable
+private fun VoiceInterviewScreen(
+    uiState: VoiceInterviewUiState,
+    onMicrophoneClick: () -> Unit,
+    onRepeatLastQuestion: () -> Unit,
+    onRetrySpeech: () -> Unit,
+    onEndSession: () -> Unit,
 ) {
     ScreenContainer {
         HeadingText(text = "음성 인터뷰 준비 화면")
         StatusCard(
             title = "현재 상태",
-            content = "듣기 전 대기 중",
+            content = voicePhaseLabel(uiState.phase),
         )
         Spacer(modifier = Modifier.height(12.dp))
         StatusCard(
             title = "마지막 질문",
-            content = "어릴 때 가장 먼저 떠오르는 장소를 말씀해 주세요.",
+            content = uiState.lastAssistantQuestion,
         )
         Spacer(modifier = Modifier.height(12.dp))
         StatusCard(
             title = "마지막 인식 결과",
-            content = "아직 인식된 내용이 없습니다.",
+            content = uiState.transcriptPlaceholder,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        StatusCard(
+            title = "안내",
+            content = uiState.helperText,
         )
         Spacer(modifier = Modifier.height(20.dp))
-        PrimaryActionButton(label = "큰 마이크 버튼 placeholder", onClick = {})
+        PrimaryActionButton(
+            label = voiceMicButtonLabel(uiState.phase),
+            onClick = onMicrophoneClick,
+            enabled = uiState.phase != VoiceInterviewPhase.Transcribing &&
+                uiState.phase != VoiceInterviewPhase.Responding,
+        )
         Spacer(modifier = Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -254,31 +297,26 @@ private fun VoiceInterviewPlaceholder(
         ) {
             OutlinedActionButton(
                 label = "다시 듣기",
-                onClick = {},
+                onClick = onRepeatLastQuestion,
                 modifier = Modifier.weight(1f),
+                enabled = uiState.phase != VoiceInterviewPhase.Listening &&
+                    uiState.phase != VoiceInterviewPhase.Transcribing &&
+                    uiState.phase != VoiceInterviewPhase.Responding,
             )
             OutlinedActionButton(
                 label = "다시 말하기",
-                onClick = {},
+                onClick = onRetrySpeech,
                 modifier = Modifier.weight(1f),
+                enabled = uiState.phase != VoiceInterviewPhase.Transcribing &&
+                    uiState.phase != VoiceInterviewPhase.Responding,
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "세션 종료",
-                onClick = onBackHome,
-                modifier = Modifier.weight(1f),
-            )
-            PrimaryActionButton(
-                label = "초안 화면 열기",
-                onClick = onOpenDraft,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        OutlinedActionButton(
+            label = "세션 종료",
+            onClick = onEndSession,
+            enabled = true,
+        )
     }
 }
 
@@ -374,6 +412,26 @@ private fun BodyText(text: String) {
     )
 }
 
+private fun voicePhaseLabel(phase: VoiceInterviewPhase): String {
+    return when (phase) {
+        VoiceInterviewPhase.Idle -> "대기 중"
+        VoiceInterviewPhase.Listening -> "듣는 중"
+        VoiceInterviewPhase.Transcribing -> "변환 중"
+        VoiceInterviewPhase.Responding -> "답변하는 중"
+        VoiceInterviewPhase.Playing -> "재생 중"
+    }
+}
+
+private fun voiceMicButtonLabel(phase: VoiceInterviewPhase): String {
+    return when (phase) {
+        VoiceInterviewPhase.Idle -> "큰 마이크 버튼"
+        VoiceInterviewPhase.Listening -> "말하기 마치기"
+        VoiceInterviewPhase.Transcribing -> "변환 중"
+        VoiceInterviewPhase.Responding -> "답변 생성 중"
+        VoiceInterviewPhase.Playing -> "다음 답변 말하기"
+    }
+}
+
 @Composable
 private fun StatusCard(title: String, content: String) {
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
@@ -438,9 +496,11 @@ private fun OutlinedActionButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier.heightIn(min = 64.dp),
     ) {
         Box(
