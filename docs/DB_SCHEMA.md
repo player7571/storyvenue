@@ -9,6 +9,9 @@ MVP 기준 핵심 테이블:
 - chapter_drafts
 - autobiography_versions
 
+오디오 파일 자체는 MVP에서 장기 보관하지 않는 것을 기본 원칙으로 한다.
+필요 시 임시 저장 후 삭제 정책을 사용한다.
+
 ---
 
 ## profiles
@@ -42,7 +45,7 @@ Columns:
 
 ## messages
 설명:
-- 채팅 메시지 저장
+- 사용자와 assistant 의 텍스트 발화 저장
 
 Columns:
 - id: uuid, primary key
@@ -51,6 +54,10 @@ Columns:
 - role: text, not null
   - allowed: user, assistant, system
 - content: text, not null
+- source_type: text, default 'text'
+  - allowed: text, stt, generated
+- stt_confidence: numeric, nullable
+- safety_mode: boolean, default false
 - created_at: timestamptz
 
 관계:
@@ -133,3 +140,10 @@ Columns:
 - memory_items
 - chapter_drafts
 - autobiography_versions
+
+---
+
+## Audio handling direction
+- 음성 원본 파일은 기본적으로 장기 보관하지 않는다.
+- STT 후 필요한 경우에만 임시 저장한다.
+- MVP에서는 텍스트 로그와 생성 결과 저장을 우선한다.

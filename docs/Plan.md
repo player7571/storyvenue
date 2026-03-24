@@ -1,10 +1,5 @@
 # Plan.md
 
-## Planning notes
-- 앱 관련 milestone 은 각 화면/기능에 대해 최소한 loading, error, empty state 를 함께 포함한다.
-- 서버 관련 milestone 은 구현과 함께 request/response schema 와 Pydantic 모델을 같이 확정한다.
-- 핵심 MVP 흐름은 Milestone 1~7 우선이며, autobiography_version 저장은 그 이후 최소 범위로 마무리한다.
-
 ## Milestone 1 - Repository scaffold
 목표:
 - app/, server/, docs/ 구조 정리
@@ -28,18 +23,16 @@ Validation:
 목표:
 - Supabase 프로젝트 연결 준비
 - profiles, sessions, messages, memory_items, chapter_drafts, autobiography_versions 테이블 설계
-- user_id, created_at, RLS 기준 확정
-- 기본 인증 흐름에 필요한 데이터 경계 정리
+- 기본 인증 흐름 준비
 
 Acceptance criteria:
 - docs/DB_SCHEMA.md 가 최신 상태다.
-- 사용자 데이터 테이블 규칙(user_id, created_at)이 문서에 반영된다.
-- RLS 적용 방향이 정리된다.
 - 서버 환경변수에 Supabase 연결 정보가 정리된다.
+- 앱에 로그인 화면 뼈대가 존재한다.
 
 Validation:
 - 서버에서 DB 연결 확인
-- 스키마 및 RLS 설계 문서 검토
+- 인증 흐름 설계 문서 검토
 
 ---
 
@@ -59,35 +52,50 @@ Validation:
 
 ---
 
-## Milestone 4 - Session and message storage
+## Milestone 4 - Voice input/output MVP
+목표:
+- 앱에서 음성 입력 받기
+- 서버에 오디오 업로드
+- STT 결과를 텍스트 로그로 저장
+- 서버 응답을 TTS 음성으로 재생
+
+Acceptance criteria:
+- 사용자가 버튼을 눌러 음성을 녹음할 수 있다.
+- 음성이 텍스트로 변환되어 화면에 표시된다.
+- 서버 응답이 텍스트와 음성으로 제공된다.
+- 모든 발화는 텍스트 로그로 저장된다.
+
+Validation:
+- 실제 안드로이드 기기에서 테스트
+- 3턴 이상 음성 인터뷰 가능
+- STT 실패 시 재시도 흐름 확인
+
+---
+
+## Milestone 5 - Session and message storage
 목표:
 - 인터뷰 세션 생성
-- 챗봇 질문 표시를 위한 최소 질문 공급(고정 질문 또는 서버 템플릿)
 - 질문/답변 저장
 - 저장된 메시지 불러오기
 
 Acceptance criteria:
 - 새 세션 생성 가능
-- 세션 시작 시 첫 질문이 표시된다.
-- 메시지 저장 가능
-- assistant / user 메시지 역할이 구분되어 저장된다.
+- 사용자 발화와 AI 발화 저장 가능
 - 기존 세션 메시지 조회 가능
 
 Validation:
-- 세션 생성 후 assistant / user 메시지 3개 이상 저장
+- 세션 생성 후 사용자/assistant 메시지 3개 이상 저장
 - 앱 재실행 후 메시지 재조회
 
 ---
 
-## Milestone 5 - Memory extraction
+## Milestone 6 - Memory extraction
 목표:
-- 서버에서 OpenAI API 호출
-- 답변 텍스트에서 memory item 구조화 추출
-- 구조화 응답 schema 검증
+- 서버에서 답변 텍스트 기반 memory item 구조화 추출
+- 추출 결과를 DB 저장
 
 Acceptance criteria:
 - 답변 1건 이상에 대해 memory item 저장 가능
-- OpenAI 응답이 Pydantic schema 로 검증된다.
 - 추출 실패 시 안전한 fallback 처리 존재
 
 Validation:
@@ -96,7 +104,7 @@ Validation:
 
 ---
 
-## Milestone 6 - Chapter draft generation
+## Milestone 7 - Chapter draft generation
 목표:
 - memory items 묶음 기반 chapter draft 생성
 - 장 제목과 본문 생성
@@ -107,14 +115,14 @@ Acceptance criteria:
 
 Validation:
 - 최소 1개 장 생성
-- 생성 결과 조회 및 DB 저장 확인
+- 다시 생성 기능 기본 동작 확인
 
 ---
 
-## Milestone 7 - Draft editing and regeneration
+## Milestone 8 - Draft editing and regeneration
 목표:
 - 초안 수정
-- 수정 요청 기반 재생성
+- 문체 변경 / 재생성 요청
 
 Acceptance criteria:
 - draft 수정 가능
@@ -127,15 +135,14 @@ Validation:
 
 ---
 
-## Milestone 8 - Autobiography version save
+## Milestone 9 - Book assembly
 목표:
 - 여러 chapter draft 를 합쳐 최종 자서전 버전 생성
-- 저장된 최종 버전 다시 조회
 
 Acceptance criteria:
 - chapter ordering 지원
 - 최종 버전 저장 가능
-- 최신 저장 버전 조회 가능
+- 미리보기 가능
 
 Validation:
 - 2개 이상 chapter 를 합친 버전 생성
@@ -143,16 +150,17 @@ Validation:
 
 ---
 
-## Milestone 9 - Cleanup for demo
+## Milestone 10 - Safety and demo polish
 목표:
-- 데모 시나리오 정리
-- 오류 메시지 개선
-- 남은 빈 상태 / 실패 상태 누락 보완
+- 위험 신호 감지 시 안전 대응 분기 추가
+- 오류 메시지, 빈 화면, 로딩 상태 개선
+- 발표용 데모 시나리오 정리
 
 Acceptance criteria:
+- 최소 1개 안전 대응 흐름 존재
 - 발표용 데모 경로가 명확하다.
-- 실패 상태가 최소한 처리된다.
-- docs/Status.md 와 docs/API.md 가 최신이다.
+- docs/API.md, docs/Status.md 가 최신 상태다.
 
 Validation:
-- 처음 로그인부터 최종 버전 저장까지 end-to-end 점검
+- end-to-end 데모 점검
+- 위험 발화 샘플 테스트

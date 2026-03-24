@@ -55,51 +55,82 @@ Response example:
 
 ---
 
-## POST /messages
-설명:
-- 사용자/챗봇 메시지 저장
-
-Request example:
-{
-  "session_id": "session_uuid",
-  "role": "user",
-  "content": "초등학교 때 여름마다 할머니 댁에 갔어요."
-}
-
-Response example:
-{
-  "id": "message_uuid",
-  "session_id": "session_uuid",
-  "role": "user",
-  "content": "초등학교 때 여름마다 할머니 댁에 갔어요.",
-  "created_at": "2026-03-24T12:03:00Z"
-}
-
----
-
 ## GET /messages/{session_id}
 설명:
 - 특정 세션의 메시지 목록 조회
+- 사용자와 assistant 발화를 시간순으로 반환
 
 Response example:
 [
   {
     "id": "message_1",
     "role": "assistant",
-    "content": "어린 시절 가장 기억에 남는 장소는 어디인가요?"
+    "content": "안녕하세요. 오늘은 편하게 옛날 이야기를 나눠보겠습니다."
   },
   {
     "id": "message_2",
     "role": "user",
-    "content": "초등학교 때 여름마다 할머니 댁에 갔어요."
+    "content": "어릴 때는 시골에서 살았어요."
   }
 ]
+
+---
+
+## POST /voice/turn
+설명:
+- 음성 입력 한 턴을 처리
+- 서버가 STT -> 사용자 메시지 저장 -> memory 추출 -> assistant 응답 생성 -> assistant 저장 -> TTS 생성까지 수행
+
+Request:
+- multipart/form-data
+- fields:
+  - session_id: string
+  - audio_file: binary
+  - mime_type: string (optional)
+  - language_hint: string (optional, 예: ko)
+
+Response example:
+{
+  "user_message": {
+    "id": "msg_user_uuid",
+    "role": "user",
+    "content": "초등학교 때 여름마다 할머니 댁에 갔어요."
+  },
+  "assistant_message": {
+    "id": "msg_assistant_uuid",
+    "role": "assistant",
+    "content": "그때 가장 먼저 떠오르는 장소가 있나요?"
+  },
+  "transcript": "초등학교 때 여름마다 할머니 댁에 갔어요.",
+  "audio_reply_url": "https://example.com/audio/reply_123.mp3",
+  "memory_items_created": 1,
+  "safety_mode": false
+}
+
+---
+
+## POST /voice/repeat-last
+설명:
+- 마지막 assistant 발화를 다시 음성으로 재생할 수 있게 TTS 결과를 반환
+
+Request example:
+{
+  "session_id": "session_uuid"
+}
+
+Response example:
+{
+  "assistant_message_id": "msg_assistant_uuid",
+  "content": "그때 가장 먼저 떠오르는 장소가 있나요?",
+  "audio_reply_url": "https://example.com/audio/reply_123.mp3"
+}
 
 ---
 
 ## POST /memory/extract
 설명:
 - 특정 메시지 또는 텍스트에서 memory item 추출
+- 디버그 또는 재처리 용도
 
 Request example:
 {
@@ -114,7 +145,7 @@ Response example:
       "period": "초등학교 시절",
       "place": "할머니 댁",
       "person": "할머니",
-      "emotion": ["행복", "그리움"],
+      "emotions": ["행복", "그리움"],
       "event": "여름방학 방문",
       "meaning": "어린 시절 가장 따뜻했던 기억"
     }
@@ -174,4 +205,23 @@ Response example:
   "book_id": "book_uuid",
   "title": "나의 이야기",
   "content": "전체 자서전 본문..."
+}
+
+---
+
+## POST /safety/check
+설명:
+- 위험 신호 발화를 별도로 검사
+- 내부적으로는 /voice/turn 내에서 자동 호출될 수 있음
+
+Request example:
+{
+  "text": "숨이 너무 차고 가슴이 아파요."
+}
+
+Response example:
+{
+  "safety_mode": true,
+  "severity": "high",
+  "recommended_action": "응급 도움 요청 안내"
 }
