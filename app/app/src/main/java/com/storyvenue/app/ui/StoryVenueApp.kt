@@ -1,5 +1,10 @@
 package com.storyvenue.app.ui
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +31,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +47,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
@@ -46,9 +57,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.storyvenue.app.auth.LoginUiState
 import com.storyvenue.app.auth.LoginViewModel
+import com.storyvenue.app.voice.MediaRecorderVoiceRecorder
 import com.storyvenue.app.voice.VoiceInterviewPhase
 import com.storyvenue.app.voice.VoiceInterviewUiState
 import com.storyvenue.app.voice.VoiceInterviewViewModel
+import com.storyvenue.app.voice.VoiceRecorder
+import com.storyvenue.app.voice.VoiceRecordingFileStore
+
+private enum class PendingRecordingAction {
+    Start,
+    Retry,
+}
 
 private enum class StoryVenueScreen(val route: String, val title: String) {
     Login("login", "로그인"),
@@ -236,7 +255,46 @@ private fun VoiceInterviewRoute(
     onBackHome: () -> Unit,
     voiceInterviewViewModel: VoiceInterviewViewModel = viewModel(),
 ) {
+    val context = LocalContext.current
     val uiState = voiceInterviewViewModel.uiState
+    val recorder: VoiceRecorder = remember { MediaRecorderVoiceRecorder() }
+    val fileStore = remember { VoiceRecordingFileStore() }
+    var pendingRecordingAction by remember { mutableStateOf(PendingRecordingAction.Start) }
+
+    val startRecording: (Boolean) -> Unit = { isRetry ->
+        val outputFile = fileStore.createTempFile(context)
+        recorder.start(outputFile).fold(
+            onSuccess = {
+                voiceInterviewViewModel.onRecordingStarted(
+                    recordingPath = outputFile.absolutePath,
+                    isRetry = isRetry,
+                )
+            },
+            onFailure = {
+                outputFile.delete()
+                voiceInterviewViewModel.onRecordingStartFailed(
+                    "녹음을 시작하지 못했습니다. 기기 설정을 확인해 주세요.",
+                )
+            },
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { isGranted ->
+        if (isGranted) {
+            voiceInterviewViewModel.onPermissionGranted()
+            startRecording(pendingRecordingAction == PendingRecordingAction.Retry)
+        } else {
+            voiceInterviewViewModel.onPermissionDenied()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        voiceInterviewViewModel.onPermissionStateChecked(
+            isGranted = hasRecordAudioPermission(context),
+        )
+    }
 
     LaunchedEffect(uiState.isSessionEnded) {
         if (uiState.isSessionEnded) {
@@ -245,12 +303,53 @@ private fun VoiceInterviewRoute(
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            recorder.discard()
+        }
+    }
+
+    val requestPermissionAndRecord: (PendingRecordingAction) -> Unit = { action ->
+        pendingRecordingAction = action
+        voiceInterviewViewModel.onPermissionRequestStarted()
+        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    val stopRecording: () -> Unit = {
+        recorder.stop().fold(
+            onSuccess = { recordedFile ->
+                voiceInterviewViewModel.onRecordingStopped(recordedFile.absolutePath)
+            },
+            onFailure = {
+                voiceInterviewViewModel.onRecordingStopFailed(
+                    "녹음을 멈추지 못했습니다. 다시 시도해 주세요.",
+                )
+            },
+        )
+    }
+
     VoiceInterviewScreen(
         uiState = uiState,
-        onMicrophoneClick = voiceInterviewViewModel::onMicrophoneClick,
+        onMicrophoneClick = {
+            when {
+                uiState.phase == VoiceInterviewPhase.Listening -> stopRecording()
+                uiState.hasRecordAudioPermission -> startRecording(false)
+                else -> requestPermissionAndRecord(PendingRecordingAction.Start)
+            }
+        },
         onRepeatLastQuestion = voiceInterviewViewModel::onRepeatLastQuestion,
-        onRetrySpeech = voiceInterviewViewModel::onRetrySpeech,
-        onEndSession = voiceInterviewViewModel::onEndSession,
+        onRetrySpeech = {
+            voiceInterviewViewModel.onRetrySpeechReady()
+            if (uiState.hasRecordAudioPermission) {
+                startRecording(true)
+            } else {
+                requestPermissionAndRecord(PendingRecordingAction.Retry)
+            }
+        },
+        onEndSession = {
+            recorder.discard()
+            voiceInterviewViewModel.onEndSession()
+        },
     )
 }
 
@@ -283,6 +382,20 @@ private fun VoiceInterviewScreen(
             title = "안내",
             content = uiState.helperText,
         )
+        Spacer(modifier = Modifier.height(12.dp))
+        StatusCard(
+            title = "임시 저장 경로",
+            content = uiState.currentRecordingPath
+                ?: uiState.lastSavedRecordingPath
+                ?: "cache/voice-recordings/voice_turn_{timestamp}.m4a",
+        )
+        if (uiState.isPermissionDenied) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = "권한 필요",
+                content = "마이크 권한이 거부되어 녹음을 시작할 수 없습니다. 버튼을 다시 눌러 권한을 다시 요청해 주세요.",
+            )
+        }
         Spacer(modifier = Modifier.height(20.dp))
         PrimaryActionButton(
             label = voiceMicButtonLabel(uiState.phase),
@@ -430,6 +543,13 @@ private fun voiceMicButtonLabel(phase: VoiceInterviewPhase): String {
         VoiceInterviewPhase.Responding -> "답변 생성 중"
         VoiceInterviewPhase.Playing -> "다음 답변 말하기"
     }
+}
+
+private fun hasRecordAudioPermission(context: Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.RECORD_AUDIO,
+    ) == PackageManager.PERMISSION_GRANTED
 }
 
 @Composable

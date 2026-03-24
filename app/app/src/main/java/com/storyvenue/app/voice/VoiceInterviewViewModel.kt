@@ -22,6 +22,10 @@ data class VoiceInterviewUiState(
     val lastAssistantQuestion: String = "어릴 때 가장 먼저 떠오르는 장소를 말씀해 주세요.",
     val transcriptPlaceholder: String = "아직 인식된 내용이 없습니다.",
     val helperText: String = "마이크 버튼을 누르면 음성 인터뷰를 시작하는 흐름을 먼저 확인할 수 있습니다.",
+    val hasRecordAudioPermission: Boolean = false,
+    val isPermissionDenied: Boolean = false,
+    val currentRecordingPath: String? = null,
+    val lastSavedRecordingPath: String? = null,
     val isSessionEnded: Boolean = false,
 )
 
@@ -31,20 +35,78 @@ class VoiceInterviewViewModel : ViewModel() {
 
     private var flowJob: Job? = null
 
-    fun onMicrophoneClick() {
-        if (uiState.phase == VoiceInterviewPhase.Transcribing || uiState.phase == VoiceInterviewPhase.Responding) {
-            return
-        }
+    fun onPermissionStateChecked(isGranted: Boolean) {
+        uiState = uiState.copy(
+            hasRecordAudioPermission = isGranted,
+            isPermissionDenied = if (isGranted) false else uiState.isPermissionDenied,
+        )
+    }
 
-        if (uiState.phase == VoiceInterviewPhase.Listening) {
-            simulateTranscriptionFlow()
-            return
-        }
+    fun onPermissionRequestStarted() {
+        uiState = uiState.copy(
+            helperText = "마이크 권한을 요청합니다. 허용해 주시면 바로 녹음을 시작합니다.",
+        )
+    }
 
+    fun onPermissionGranted() {
+        uiState = uiState.copy(
+            hasRecordAudioPermission = true,
+            isPermissionDenied = false,
+            helperText = "권한이 허용되었습니다. 마이크를 눌러 말씀해 주세요.",
+        )
+    }
+
+    fun onPermissionDenied() {
+        uiState = uiState.copy(
+            hasRecordAudioPermission = false,
+            isPermissionDenied = true,
+            phase = VoiceInterviewPhase.Idle,
+            currentRecordingPath = null,
+            helperText = "마이크 권한이 없어 녹음을 시작할 수 없습니다. 다시 시도해 주세요.",
+        )
+    }
+
+    fun onRecordingStarted(recordingPath: String, isRetry: Boolean) {
         flowJob?.cancel()
         uiState = uiState.copy(
             phase = VoiceInterviewPhase.Listening,
-            helperText = "듣는 중 placeholder 입니다. 다시 누르면 말하기를 마친 것으로 처리합니다.",
+            isPermissionDenied = false,
+            currentRecordingPath = recordingPath,
+            transcriptPlaceholder = if (isRetry) {
+                "다시 말하기를 듣는 중입니다."
+            } else {
+                "아직 인식된 내용이 없습니다."
+            },
+            helperText = "듣는 중입니다. 말씀을 마치면 마이크 버튼을 한 번 더 눌러 주세요.",
+        )
+    }
+
+    fun onRecordingStartFailed(message: String) {
+        flowJob?.cancel()
+        uiState = uiState.copy(
+            phase = VoiceInterviewPhase.Idle,
+            currentRecordingPath = null,
+            helperText = message,
+        )
+    }
+
+    fun onRecordingStopped(recordingPath: String) {
+        flowJob?.cancel()
+        uiState = uiState.copy(
+            phase = VoiceInterviewPhase.Transcribing,
+            currentRecordingPath = null,
+            lastSavedRecordingPath = recordingPath,
+            helperText = "녹음을 멈추고 임시 저장했습니다. 실제 STT 연결 전 단계입니다.",
+        )
+        simulateTranscriptionFlow()
+    }
+
+    fun onRecordingStopFailed(message: String) {
+        flowJob?.cancel()
+        uiState = uiState.copy(
+            phase = VoiceInterviewPhase.Idle,
+            currentRecordingPath = null,
+            helperText = message,
         )
     }
 
@@ -65,12 +127,11 @@ class VoiceInterviewViewModel : ViewModel() {
         }
     }
 
-    fun onRetrySpeech() {
+    fun onRetrySpeechReady() {
         flowJob?.cancel()
         uiState = uiState.copy(
-            phase = VoiceInterviewPhase.Listening,
             transcriptPlaceholder = "다시 말하기를 시작합니다. 아직 인식된 내용이 없습니다.",
-            helperText = "다시 말하기 placeholder 입니다. 실제 녹음 연결 전 상태 흐름만 먼저 구현했습니다.",
+            helperText = "다시 말하기를 준비했습니다. 마이크 권한이 있으면 바로 녹음을 시작합니다.",
         )
     }
 
@@ -78,6 +139,7 @@ class VoiceInterviewViewModel : ViewModel() {
         flowJob?.cancel()
         uiState = uiState.copy(
             phase = VoiceInterviewPhase.Idle,
+            currentRecordingPath = null,
             isSessionEnded = true,
             helperText = "세션을 종료하고 홈으로 돌아갑니다.",
         )

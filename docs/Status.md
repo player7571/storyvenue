@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트 뼈대까지 준비된 최소 실행 단계다.
+현재는 FastAPI `/health`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -40,6 +40,9 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - Voice Interview ViewModel 과 상태 구조 추가
 - 큰 마이크 버튼, 현재 상태, 마지막 질문, 인식 결과, 다시 듣기, 다시 말하기, 세션 종료 UI 연결
 - Voice Interview placeholder 이벤트 흐름(듣기 -> 변환 -> 답변 -> 재생 -> 대기) 추가
+- `RECORD_AUDIO` 권한 요청 흐름 추가
+- 권한 거부 상태 UI 및 재요청 흐름 추가
+- MediaRecorder 기반 시작/중지 뼈대와 cache 임시 파일 저장 구조 추가
 - `:app:compileDebugKotlin`, `:app:assembleDebug` 검증 통과
 
 ## In progress
@@ -50,13 +53,14 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - 음성 업로드, STT, TTS, safety 관련 API는 아직 없다.
 - DB 접근용 repository/service 계층은 아직 없다.
 - 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
-- Voice Interview 는 placeholder 상태 전이만 있으며 실제 마이크 권한, 녹음, STT, TTS 연결이 아직 없다.
+- Voice Interview 는 권한/녹음 뼈대까지 있으며 실제 STT, TTS, 서버 업로드 연결이 아직 없다.
+- MediaRecorder 동작과 권한 UX 는 실기기 확인이 아직 없다.
 - Draft, Book Preview 화면은 아직 실제 데이터 연결이 없다.
 
 ## Next
 1. Supabase 스키마 초안 작성
 2. 로그인 화면에 실제 Supabase Auth 연동
-3. Voice Interview 화면에 마이크 권한, 실제 녹음, STT/TTS 연결
+3. Voice Interview 화면에 녹음 파일 업로드, STT/TTS 연결
 4. 서버의 세션/voice turn API 초안 구현
 5. placeholder 화면을 실제 데이터 흐름과 연결
 
@@ -97,8 +101,13 @@ server 검증:
 - `/health` 응답 확인: `{"status":"ok"}`
 
 ## Device test
-- 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 상태 흐름까지 검증했다.
-- Voice Interview 화면의 마이크 권한, 녹음, TTS 를 붙이는 시점부터 실기기 테스트가 반드시 필요하다.
+- 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음 뼈대까지 검증했다.
+- 실기기 테스트 필요 항목:
+- `RECORD_AUDIO` 권한 허용 / 1회 거부 / 재요청 흐름 확인
+- 녹음 시작 후 중지 시 `cache/voice-recordings/*.m4a` 임시 파일 생성 확인
+- 너무 짧은 녹음에서도 앱이 비정상 종료하지 않는지 확인
+- 세션 종료 시 진행 중 녹음 정리 동작 확인
+- 실제 기기 마이크 품질과 MediaRecorder 시작/중지 타이밍 확인
 
 ## Changed files
 - `server/requirements.txt`
@@ -123,6 +132,8 @@ server 검증:
 - `app/app/src/main/java/com/storyvenue/app/auth/PlaceholderAuthRepository.kt`
 - `app/app/src/main/java/com/storyvenue/app/auth/LoginViewModel.kt`
 - `app/app/src/main/java/com/storyvenue/app/voice/VoiceInterviewViewModel.kt`
+- `app/app/src/main/java/com/storyvenue/app/voice/VoiceRecorder.kt`
+- `app/app/src/main/java/com/storyvenue/app/voice/VoiceRecordingFileStore.kt`
 - `app/app/src/main/res/values/strings.xml`
 - `app/app/src/main/java/com/storyvenue/app/MainActivity.kt`
 - `app/app/src/main/java/com/storyvenue/app/ui/StoryVenueApp.kt`
@@ -133,4 +144,4 @@ server 검증:
 - 안전 관련 발화는 자서전 인터뷰보다 우선한다.
 - 음성 기능은 실기기에서 검증해야 한다.
 - 로그인은 현재 placeholder 인증 흐름이며 실제 Supabase Auth 교체가 TODO 로 남아 있다.
-- Voice Interview 는 현재 placeholder 상태 흐름이며 실제 녹음/STT/TTS 연결이 TODO 로 남아 있다.
+- Voice Interview 는 현재 권한/녹음 뼈대까지 구현했고 실제 STT/TTS/업로드 연결이 TODO 로 남아 있다.
