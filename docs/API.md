@@ -8,7 +8,7 @@
 - 앱은 Supabase Auth 로 로그인한다.
 - 서버는 인증된 사용자 기준으로 요청을 처리한다.
 - OpenAI API key 는 서버 환경변수에만 저장한다.
-- 현재 `/sessions`, `/messages`, `/voice/turn` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- 현재 `/sessions`, `/messages`, `/voice/turn`, `/memory/extract` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ---
 
@@ -147,6 +147,10 @@ Response example:
 설명:
 - 특정 메시지 또는 텍스트에서 memory item 추출
 - 디버그 또는 재처리 용도
+- 현재 구현은 `X-User-Id` header 가 필요하다.
+- 요청 본문은 `message_id` 또는 `text` 중 하나만 포함해야 한다.
+- 현재 extraction 은 OpenAI Structured Outputs 기반 Pydantic schema 파싱을 사용한다.
+- OpenAI 호출 또는 구조화 파싱이 실패하면 `raw_text` 만 보존한 fallback memory item 1건을 저장한다.
 
 Request example:
 {
@@ -154,18 +158,30 @@ Request example:
   "message_id": "message_uuid"
 }
 
+또는
+{
+  "session_id": "session_uuid",
+  "text": "초등학교 때 여름마다 할머니 댁에 갔어요."
+}
+
 Response example:
 {
   "items": [
     {
+      "id": "memory_uuid",
+      "session_id": "session_uuid",
+      "message_id": "message_uuid",
       "period": "초등학교 시절",
       "place": "할머니 댁",
       "person": "할머니",
-      "emotions": ["행복", "그리움"],
       "event": "여름방학 방문",
-      "meaning": "어린 시절 가장 따뜻했던 기억"
+      "emotions": ["행복", "그리움"],
+      "meaning": "어린 시절 가장 따뜻했던 기억",
+      "raw_text": "초등학교 때 여름마다 할머니 댁에 갔어요.",
+      "created_at": "2026-03-25T09:10:00Z"
     }
-  ]
+  ],
+  "fallback_used": false
 }
 
 ---

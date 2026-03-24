@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     openai_stt_model: str = "gpt-4o-transcribe"
     openai_stt_language: str | None = "ko"
     openai_stt_prompt: str | None = None
+    openai_memory_model: str = "gpt-4.1-mini"
+    openai_memory_prompt: str | None = None
     openai_tts_model: str = "gpt-4o-mini-tts"
     openai_tts_voice: str = "coral"
     openai_tts_format: str = "mp3"

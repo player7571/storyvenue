@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 
+from app.services.memory_service import MemoryConfigurationError, MemoryService
 from app.services.message_service import MessageConfigurationError, MessageService
 from app.services.session_service import SessionConfigurationError, SessionService
 from app.services.voice_turn_service import (
@@ -25,6 +26,16 @@ def get_message_service() -> MessageService:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Supabase message service is not configured.",
+        ) from exc
+
+
+def get_memory_service() -> MemoryService:
+    try:
+        return MemoryService()
+    except MemoryConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Memory extraction service is not configured.",
         ) from exc
 
 
