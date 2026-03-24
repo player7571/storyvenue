@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/safety/check`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` PATCH, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
+현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, `/voice/repeat-last`, `/safety/check`, `/memory/extract`, `/chapters/generate`, `/chapters/{chapter_id}` PATCH, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -19,6 +19,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/sessions` 구현은 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/messages/{session_id}` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/voice/turn` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- `/voice/repeat-last` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/memory/extract` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/chapters/generate` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - `/chapters/{chapter_id}` PATCH 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
@@ -56,6 +57,11 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - STT, 텍스트 응답 생성, TTS service 인터페이스와 mock 구현 추가
 - transcript 저장과 assistant 메시지 저장을 포함한 VoiceTurn service 추가
 - `/voice/turn` route smoke test 확인
+- `POST /voice/repeat-last` route 추가
+- 세션의 마지막 assistant message 조회와 mp3 재사용 또는 재생성 흐름 추가
+- app 다시 듣기 버튼을 `/voice/repeat-last` 호출 기반으로 연결
+- 마지막 assistant 텍스트와 오디오 경로를 다시 불러와 `MediaPlayer` 재생까지 연결
+- `/voice/repeat-last` route smoke test 확인
 - `POST /memory/extract` request/response schema 추가
 - OpenAI memory extraction service 와 Structured Outputs Pydantic schema 추가
 - memory_items 저장 service 와 fallback raw_text 저장 처리 추가
@@ -114,6 +120,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - chapter PATCH 는 in-place update 정책이라 이전 버전 본문 자체는 별도 row 로 보존하지 않는다.
 - chapter regenerate 는 현재 `session_id` 가 저장된 chapter draft 에서만 지원한다.
 - `/voice/turn` 는 memory extraction 과 오디오 장기 저장 없이 최소 응답만 반환한다.
+- `/voice/repeat-last` 는 마지막 assistant message 가 없는 세션에서 `404` 를 반환한다.
 - safety 위험 발화 원문 최소 저장 정책은 아직 별도 마스킹 없이 transcript 원문 저장 단계다.
 - TTS 파일은 현재 서버 로컬 디스크에 저장되며 만료/정리 정책이 아직 없다.
 - OpenAI TTS voices 는 영어 최적화 기준이라 한국어 음성 품질과 속도는 실기기 테스트가 필요하다.
@@ -200,6 +207,7 @@ server 검증:
 - 세션 조회 예시: `curl http://127.0.0.1:8000/sessions/<session_uuid> -H "X-User-Id: <user_uuid>"`
 - 메시지 조회 예시: `curl http://127.0.0.1:8000/messages/<session_uuid> -H "X-User-Id: <user_uuid>"`
 - 음성 턴 예시: `curl -X POST http://127.0.0.1:8000/voice/turn -H "X-User-Id: <user_uuid>" -F "session_id=<session_uuid>" -F "audio_file=@sample.m4a" -F "language_hint=ko"`
+- 마지막 assistant 다시 듣기 예시: `curl -X POST http://127.0.0.1:8000/voice/repeat-last -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"session_id":"<session_uuid>"}'`
 - safety 검사 예시: `curl -X POST http://127.0.0.1:8000/safety/check -H "Content-Type: application/json" -d '{"text":"숨이 너무 차고 가슴이 아파요."}'`
 - memory 추출 예시: `curl -X POST http://127.0.0.1:8000/memory/extract -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"session_id":"<session_uuid>","message_id":"<message_uuid>"}'`
 - chapter 생성 예시: `curl -X POST http://127.0.0.1:8000/chapters/generate -H "Content-Type: application/json" -H "X-User-Id: <user_uuid>" -d '{"chapter_type":"childhood","session_id":"<session_uuid>"}'`
@@ -214,6 +222,7 @@ server 검증:
 - route smoke test:
 - `/sessions` dependency override 기반 `POST 201`, `GET 200`, `GET missing 404` 확인
 - `/messages` dependency override 기반 `GET 200`, 빈 세션 `GET 200 []`, 없는 세션 `GET 404` 확인
+- `/voice/repeat-last` dependency override 기반 `POST 200`, assistant 없음 `POST 404`, 없는 세션 `POST 404` 확인
 - `/safety/check` dependency override 기반 `POST 200`, 빈 text `POST 422` 확인
 - `/memory/extract` dependency override 기반 `POST 200`, message missing `POST 404` 확인
 - `/chapters/generate` dependency override 기반 `POST 200`, source missing `POST 404` 확인
@@ -231,6 +240,16 @@ Safety test utterances:
 - `"쓰러져서 일어날 수 없어요."` -> `safety_mode=true`, 119 또는 주변 도움 요청 안내 기대
 - `"죽고 싶어요. 사는 의미가 없어요."` -> `safety_mode=true`, 인터뷰 중단과 즉시 도움 요청 안내 기대
 - `"초등학교 때 여름마다 할머니 댁에 갔어요."` -> `safety_mode=false`, 일반 인터뷰 질문 응답 기대
+
+Manual repeat-last test:
+- server 에서 `uvicorn app.main:app --reload` 실행
+- `POST /sessions` 로 테스트 세션 생성
+- app 또는 `POST /voice/turn` 으로 assistant 응답 1건 이상 생성
+- `POST /voice/repeat-last` 호출 시 마지막 assistant `content` 와 `/generated-audio/...mp3` 경로가 오는지 확인
+- app Voice Interview 화면에서 같은 서버 주소, 사용자 ID, 세션 ID 입력 후 `다시 듣기` 버튼 탭
+- 현재 상태가 잠시 로딩으로 바뀐 뒤 마지막 질문 텍스트가 유지 또는 갱신되는지 확인
+- 이어서 assistant 오디오가 실제로 재생되는지 확인
+- assistant 메시지가 없는 새 세션에서 `다시 듣기` 버튼 또는 `POST /voice/repeat-last` 호출 시 실패 상태가 표시되는지 확인
 
 ## Device test
 - 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음/업로드 흐름까지 검증했다.

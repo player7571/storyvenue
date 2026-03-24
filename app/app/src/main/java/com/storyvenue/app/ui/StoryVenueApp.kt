@@ -307,6 +307,17 @@ private fun VoiceInterviewRoute(
         }
     }
 
+    LaunchedEffect(uiState.pendingAssistantPlaybackUrl) {
+        val audioUrl = uiState.pendingAssistantPlaybackUrl ?: return@LaunchedEffect
+        voiceInterviewViewModel.onAssistantPlaybackRequestConsumed()
+        audioReplyPlayer.play(
+            url = audioUrl,
+            onStarted = voiceInterviewViewModel::onAssistantPlaybackStarted,
+            onCompleted = voiceInterviewViewModel::onAssistantPlaybackCompleted,
+            onError = voiceInterviewViewModel::onAssistantPlaybackFailed,
+        )
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             recorder.discard()
@@ -346,15 +357,8 @@ private fun VoiceInterviewRoute(
             }
         },
         onRepeatLastQuestion = {
-            val audioUrl = voiceInterviewViewModel.onRepeatLastQuestionRequested()
-            if (audioUrl != null) {
-                audioReplyPlayer.play(
-                    url = audioUrl,
-                    onStarted = voiceInterviewViewModel::onAssistantPlaybackStarted,
-                    onCompleted = voiceInterviewViewModel::onAssistantPlaybackCompleted,
-                    onError = voiceInterviewViewModel::onAssistantPlaybackFailed,
-                )
-            }
+            audioReplyPlayer.stop()
+            voiceInterviewViewModel.onRepeatLastQuestionRequested()
         },
         onRetrySpeech = {
             audioReplyPlayer.stop()
@@ -447,7 +451,7 @@ private fun VoiceInterviewScreen(
             uiState.phase == VoiceInterviewPhase.Responding
         ) {
             Spacer(modifier = Modifier.height(12.dp))
-            LoadingPlaceholder(message = "녹음 파일을 업로드하고 응답을 기다리는 중입니다.")
+            LoadingPlaceholder(message = uiState.helperText)
         }
         if (uiState.errorMessage != null) {
             Spacer(modifier = Modifier.height(12.dp))

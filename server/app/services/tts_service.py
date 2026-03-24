@@ -38,6 +38,19 @@ class TextToSpeechService:
     ) -> TextToSpeechResult:
         raise NotImplementedError
 
+    def get_or_synthesize(
+        self,
+        *,
+        session_id: UUID,
+        message_id: UUID,
+        text: str,
+    ) -> TextToSpeechResult:
+        return self.synthesize(
+            session_id=session_id,
+            message_id=message_id,
+            text=text,
+        )
+
 
 class OpenAITextToSpeechService(TextToSpeechService):
     def __init__(
@@ -79,9 +92,10 @@ class OpenAITextToSpeechService(TextToSpeechService):
         if not text.strip():
             raise TextToSpeechServiceError("Assistant text is empty.")
 
-        session_dir = self.output_dir / str(session_id)
-        session_dir.mkdir(parents=True, exist_ok=True)
-        output_path = session_dir / f"{message_id}.{self.audio_format}"
+        output_path = self._build_output_path(
+            session_id=session_id,
+            message_id=message_id,
+        )
 
         try:
             with self.client.audio.speech.with_streaming_response.create(
@@ -106,11 +120,60 @@ class OpenAITextToSpeechService(TextToSpeechService):
             raise TextToSpeechServiceError("OpenAI text-to-speech output was empty.")
 
         return TextToSpeechResult(
-            audio_reply_url=f"{self.public_path}/{session_id}/{message_id}.{self.audio_format}",
+            audio_reply_url=self._build_audio_reply_url(
+                session_id=session_id,
+                message_id=message_id,
+            ),
             audio_file_path=output_path,
             audio_format=self.audio_format,
             content_type=_content_type_for_format(self.audio_format),
         )
+
+    def get_or_synthesize(
+        self,
+        *,
+        session_id: UUID,
+        message_id: UUID,
+        text: str,
+    ) -> TextToSpeechResult:
+        output_path = self._build_output_path(
+            session_id=session_id,
+            message_id=message_id,
+        )
+        if output_path.exists() and output_path.stat().st_size > 0:
+            return TextToSpeechResult(
+                audio_reply_url=self._build_audio_reply_url(
+                    session_id=session_id,
+                    message_id=message_id,
+                ),
+                audio_file_path=output_path,
+                audio_format=self.audio_format,
+                content_type=_content_type_for_format(self.audio_format),
+            )
+
+        return self.synthesize(
+            session_id=session_id,
+            message_id=message_id,
+            text=text,
+        )
+
+    def _build_output_path(
+        self,
+        *,
+        session_id: UUID,
+        message_id: UUID,
+    ) -> Path:
+        session_dir = self.output_dir / str(session_id)
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return session_dir / f"{message_id}.{self.audio_format}"
+
+    def _build_audio_reply_url(
+        self,
+        *,
+        session_id: UUID,
+        message_id: UUID,
+    ) -> str:
+        return f"{self.public_path}/{session_id}/{message_id}.{self.audio_format}"
 
 
 class MockTextToSpeechService(TextToSpeechService):

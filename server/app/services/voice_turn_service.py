@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from supabase import Client
@@ -52,8 +53,18 @@ class VoiceTurnSessionNotFoundError(VoiceTurnServiceError):
     """Raised when the session does not exist for the current user."""
 
 
+class VoiceTurnAssistantMessageNotFoundError(VoiceTurnServiceError):
+    """Raised when there is no assistant message to repeat for the session."""
+
+
 class VoiceTurnProcessingError(VoiceTurnServiceError):
     """Raised when the voice turn pipeline cannot complete."""
+
+
+@dataclass(frozen=True)
+class StoredAssistantMessage:
+    id: UUID
+    content: str
 
 
 class VoiceTurnService:
@@ -97,12 +108,7 @@ class VoiceTurnService:
         if not audio.data:
             raise VoiceTurnInputError("Uploaded audio is empty.")
 
-        try:
-            self.session_service.get_session(user_id=user_id, session_id=session_id)
-        except SessionNotFoundError as exc:
-            raise VoiceTurnSessionNotFoundError(str(session_id)) from exc
-        except SessionPersistenceError as exc:
-            raise VoiceTurnProcessingError(str(exc)) from exc
+        self._ensure_session_exists(user_id=user_id, session_id=session_id)
 
         try:
             transcript_result = self.stt_service.transcribe(audio)
@@ -159,6 +165,73 @@ class VoiceTurnService:
             audio_reply_url=tts_result.audio_reply_url,
             memory_items_created=0,
             safety_mode=safety_result.safety_mode or assistant_safety_mode,
+        )
+
+    def repeat_last_assistant(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+    ) -> tuple[StoredAssistantMessage, str]:
+        self._ensure_session_exists(user_id=user_id, session_id=session_id)
+
+        assistant_message = self._load_last_assistant_message(
+            user_id=user_id,
+            session_id=session_id,
+        )
+
+        try:
+            tts_result = self.tts_service.get_or_synthesize(
+                session_id=session_id,
+                message_id=assistant_message.id,
+                text=assistant_message.content,
+            )
+        except TextToSpeechServiceError as exc:
+            raise VoiceTurnProcessingError(str(exc)) from exc
+
+        return assistant_message, tts_result.audio_reply_url
+
+    def _ensure_session_exists(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+    ) -> None:
+        try:
+            self.session_service.get_session(user_id=user_id, session_id=session_id)
+        except SessionNotFoundError as exc:
+            raise VoiceTurnSessionNotFoundError(str(session_id)) from exc
+        except SessionPersistenceError as exc:
+            raise VoiceTurnProcessingError(str(exc)) from exc
+
+    def _load_last_assistant_message(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+    ) -> StoredAssistantMessage:
+        try:
+            response = (
+                self.client.table("messages")
+                .select("id, content")
+                .eq("session_id", str(session_id))
+                .eq("user_id", str(user_id))
+                .eq("role", "assistant")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:  # pragma: no cover - external client failure path
+            raise VoiceTurnProcessingError(str(exc)) from exc
+
+        rows = response.data or []
+        if not rows:
+            raise VoiceTurnAssistantMessageNotFoundError(str(session_id))
+
+        row = rows[0]
+        return StoredAssistantMessage(
+            id=UUID(str(row["id"])),
+            content=row["content"],
         )
 
     def _create_message(

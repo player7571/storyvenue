@@ -32,6 +32,7 @@ data class VoiceInterviewUiState(
     val currentRecordingPath: String? = null,
     val lastSavedRecordingPath: String? = null,
     val lastAssistantAudioUrl: String? = null,
+    val pendingAssistantPlaybackUrl: String? = null,
     val isSessionEnded: Boolean = false,
 )
 
@@ -118,7 +119,7 @@ class VoiceInterviewViewModel(
     fun onRecordingStopped(recordingPath: String) {
         flowJob?.cancel()
 
-        val uploadConfig = buildUploadConfig().getOrElse { error ->
+        val uploadConfig = buildRequestConfig().getOrElse { error ->
             uiState = uiState.copy(
                 phase = VoiceInterviewPhase.Idle,
                 currentRecordingPath = null,
@@ -160,6 +161,7 @@ class VoiceInterviewViewModel(
                         transcriptPlaceholder = result.transcript,
                         lastAssistantQuestion = result.assistantMessage.content,
                         lastAssistantAudioUrl = result.audioReplyUrl,
+                        pendingAssistantPlaybackUrl = null,
                         errorMessage = null,
                         helperText = if (result.audioReplyUrl != null) {
                             "assistant 응답을 받았습니다. 다시 듣기 버튼으로 재생할 수 있습니다."
@@ -189,21 +191,60 @@ class VoiceInterviewViewModel(
         )
     }
 
-    fun onRepeatLastQuestionRequested(): String? {
-        val audioUrl = uiState.lastAssistantAudioUrl
-        if (audioUrl.isNullOrBlank()) {
+    fun onRepeatLastQuestionRequested() {
+        flowJob?.cancel()
+
+        val requestConfig = buildRequestConfig().getOrElse { error ->
             uiState = uiState.copy(
-                errorMessage = "재생할 assistant 오디오가 아직 없습니다.",
-                helperText = "먼저 녹음을 업로드해 assistant 응답을 받아 주세요.",
+                phase = VoiceInterviewPhase.Idle,
+                pendingAssistantPlaybackUrl = null,
+                errorMessage = error.message,
+                helperText = "다시 듣기를 시작할 수 없습니다. 입력값을 확인해 주세요.",
             )
-            return null
+            return
         }
 
         uiState = uiState.copy(
+            phase = VoiceInterviewPhase.Responding,
+            pendingAssistantPlaybackUrl = null,
             errorMessage = null,
-            helperText = "assistant 오디오 재생을 준비합니다.",
+            helperText = "마지막 assistant 질문을 다시 불러오는 중입니다.",
         )
-        return audioUrl
+
+        flowJob = viewModelScope.launch {
+            voiceTurnRepository.repeatLastAssistant(
+                config = requestConfig,
+            ).fold(
+                onSuccess = { result ->
+                    uiState = uiState.copy(
+                        phase = VoiceInterviewPhase.Idle,
+                        lastAssistantQuestion = result.content,
+                        lastAssistantAudioUrl = result.audioReplyUrl,
+                        pendingAssistantPlaybackUrl = result.audioReplyUrl,
+                        errorMessage = null,
+                        helperText = "마지막 assistant 질문을 다시 불러왔습니다. 곧 재생합니다.",
+                    )
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        phase = VoiceInterviewPhase.Idle,
+                        pendingAssistantPlaybackUrl = null,
+                        errorMessage = error.message ?: "다시 듣기에 실패했습니다.",
+                        helperText = "다시 듣기에 실패했습니다. 세션과 네트워크 상태를 확인해 주세요.",
+                    )
+                },
+            )
+        }
+    }
+
+    fun onAssistantPlaybackRequestConsumed() {
+        if (uiState.pendingAssistantPlaybackUrl == null) {
+            return
+        }
+
+        uiState = uiState.copy(
+            pendingAssistantPlaybackUrl = null,
+        )
     }
 
     fun onAssistantPlaybackStarted() {
@@ -253,7 +294,7 @@ class VoiceInterviewViewModel(
         uiState = uiState.copy(isSessionEnded = false)
     }
 
-    private fun buildUploadConfig(): Result<VoiceTurnRequestConfig> {
+    private fun buildRequestConfig(): Result<VoiceTurnRequestConfig> {
         return runCatching {
             val baseUrl = uiState.serverBaseUrl.trim()
             val userId = uiState.userIdInput.trim()

@@ -8,7 +8,7 @@
 - 앱은 Supabase Auth 로 로그인한다.
 - 서버는 인증된 사용자 기준으로 요청을 처리한다.
 - OpenAI API key 는 서버 환경변수에만 저장한다.
-- 현재 `/sessions`, `/messages`, `/voice/turn`, `/memory/extract`, `/chapters/generate` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- 현재 `/sessions`, `/messages`, `/voice/turn`, `/voice/repeat-last`, `/memory/extract`, `/chapters/generate` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ---
 
@@ -135,6 +135,9 @@ Response example:
 ## POST /voice/repeat-last
 설명:
 - 마지막 assistant 발화를 다시 음성으로 재생할 수 있게 TTS 결과를 반환
+- 현재 구현은 `X-User-Id` header 가 필요하다.
+- 같은 assistant message 에 대해 기존 mp3 파일이 있으면 재사용하고, 없으면 다시 TTS 를 생성한다.
+- 마지막 assistant 텍스트와 재생 가능한 오디오 경로를 함께 반환한다.
 
 Request example:
 {

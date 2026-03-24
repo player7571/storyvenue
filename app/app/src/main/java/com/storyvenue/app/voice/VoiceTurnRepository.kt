@@ -7,6 +7,7 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -31,6 +32,12 @@ data class VoiceTurnResult(
     val assistantMessage: VoiceTurnMessage,
     val transcript: String,
     val audioReplyUrl: String?,
+)
+
+data class RepeatLastAssistantResult(
+    val assistantMessageId: String,
+    val content: String,
+    val audioReplyUrl: String,
 )
 
 class VoiceTurnRepository(
@@ -79,6 +86,37 @@ class VoiceTurnRepository(
         }
     }
 
+    suspend fun repeatLastAssistant(
+        config: VoiceTurnRequestConfig,
+    ): Result<RepeatLastAssistantResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedBaseUrl = config.baseUrl.trim().removeSuffix("/")
+            val requestBody = JSONObject()
+                .put("session_id", config.sessionId)
+                .toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+
+            val request = Request.Builder()
+                .url("$normalizedBaseUrl/voice/repeat-last")
+                .header("X-User-Id", config.userId)
+                .post(requestBody)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+
+                if (!response.isSuccessful) {
+                    throw IOException(parseErrorMessage(responseBody))
+                }
+
+                parseRepeatLastAssistantResult(
+                    responseBody = responseBody,
+                    normalizedBaseUrl = normalizedBaseUrl,
+                )
+            }
+        }
+    }
+
     private fun parseVoiceTurnResult(
         responseBody: String,
         normalizedBaseUrl: String,
@@ -109,6 +147,35 @@ class VoiceTurnRepository(
             userMessage = userMessage,
             assistantMessage = assistantMessage,
             transcript = transcript,
+            audioReplyUrl = audioReplyUrl,
+        )
+    }
+
+    private fun parseRepeatLastAssistantResult(
+        responseBody: String,
+        normalizedBaseUrl: String,
+    ): RepeatLastAssistantResult {
+        val json = JSONObject(responseBody)
+        val assistantMessageId = json.optString("assistant_message_id")
+        val content = json.optString("content")
+        val rawAudioReplyUrl = json.optString("audio_reply_url")
+        val audioReplyUrl = rawAudioReplyUrl
+            .takeIf { it.isNotBlank() }
+            ?.let { rawUrl -> resolveAudioReplyUrl(normalizedBaseUrl, rawUrl) }
+
+        if (assistantMessageId.isBlank()) {
+            throw IOException("서버에서 assistant message id 를 받지 못했습니다.")
+        }
+        if (content.isBlank()) {
+            throw IOException("서버에서 마지막 assistant 텍스트를 받지 못했습니다.")
+        }
+        if (audioReplyUrl.isNullOrBlank()) {
+            throw IOException("서버에서 재생 가능한 assistant 오디오를 받지 못했습니다.")
+        }
+
+        return RepeatLastAssistantResult(
+            assistantMessageId = assistantMessageId,
+            content = content,
             audioReplyUrl = audioReplyUrl,
         )
     }
