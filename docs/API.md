@@ -8,7 +8,7 @@
 - 앱은 Supabase Auth 로 로그인한다.
 - 서버는 인증된 사용자 기준으로 요청을 처리한다.
 - OpenAI API key 는 서버 환경변수에만 저장한다.
-- 현재 `/sessions`, `/messages` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
+- 현재 `/sessions`, `/messages`, `/voice/turn` 구현은 인증 미들웨어 대신 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 
 ---
 
@@ -88,7 +88,10 @@ Response example:
 ## POST /voice/turn
 설명:
 - 음성 입력 한 턴을 처리
-- 서버가 STT -> 사용자 메시지 저장 -> memory 추출 -> assistant 응답 생성 -> assistant 저장 -> TTS 생성까지 수행
+- 서버가 STT -> 사용자 메시지 저장 -> assistant 응답 생성 -> assistant 저장 -> TTS 생성까지 수행
+- 현재 구현은 `X-User-Id` header 가 필요하다.
+- 현재 STT, 텍스트 응답 생성, TTS 는 mock service 기반이다.
+- 현재 `memory_items_created` 는 항상 `0` 이다.
 
 Request:
 - multipart/form-data
@@ -103,16 +106,18 @@ Response example:
   "user_message": {
     "id": "msg_user_uuid",
     "role": "user",
-    "content": "초등학교 때 여름마다 할머니 댁에 갔어요."
+    "content": "업로드된 음성의 임시 transcript 입니다.",
+    "created_at": "2026-03-25T09:00:00Z"
   },
   "assistant_message": {
     "id": "msg_assistant_uuid",
     "role": "assistant",
-    "content": "그때 가장 먼저 떠오르는 장소가 있나요?"
+    "content": "말씀 감사합니다. 그때 가장 먼저 떠오르는 장소가 있나요?",
+    "created_at": "2026-03-25T09:00:01Z"
   },
-  "transcript": "초등학교 때 여름마다 할머니 댁에 갔어요.",
-  "audio_reply_url": "https://example.com/audio/reply_123.mp3",
-  "memory_items_created": 1,
+  "transcript": "업로드된 음성의 임시 transcript 입니다.",
+  "audio_reply_url": "mock://tts/session_uuid/msg_assistant_uuid",
+  "memory_items_created": 0,
   "safety_mode": false
 }
 
