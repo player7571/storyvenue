@@ -57,6 +57,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.storyvenue.app.auth.LoginUiState
 import com.storyvenue.app.auth.LoginViewModel
+import com.storyvenue.app.voice.AudioReplyPlayer
+import com.storyvenue.app.voice.MediaPlayerAudioReplyPlayer
 import com.storyvenue.app.voice.MediaRecorderVoiceRecorder
 import com.storyvenue.app.voice.VoiceInterviewPhase
 import com.storyvenue.app.voice.VoiceInterviewUiState
@@ -258,10 +260,12 @@ private fun VoiceInterviewRoute(
     val context = LocalContext.current
     val uiState = voiceInterviewViewModel.uiState
     val recorder: VoiceRecorder = remember { MediaRecorderVoiceRecorder() }
+    val audioReplyPlayer: AudioReplyPlayer = remember { MediaPlayerAudioReplyPlayer() }
     val fileStore = remember { VoiceRecordingFileStore() }
     var pendingRecordingAction by remember { mutableStateOf(PendingRecordingAction.Start) }
 
     val startRecording: (Boolean) -> Unit = { isRetry ->
+        audioReplyPlayer.stop()
         val outputFile = fileStore.createTempFile(context)
         recorder.start(outputFile).fold(
             onSuccess = {
@@ -306,6 +310,7 @@ private fun VoiceInterviewRoute(
     DisposableEffect(Unit) {
         onDispose {
             recorder.discard()
+            audioReplyPlayer.release()
         }
     }
 
@@ -330,6 +335,9 @@ private fun VoiceInterviewRoute(
 
     VoiceInterviewScreen(
         uiState = uiState,
+        onServerBaseUrlChanged = voiceInterviewViewModel::onServerBaseUrlChanged,
+        onUserIdChanged = voiceInterviewViewModel::onUserIdChanged,
+        onSessionIdChanged = voiceInterviewViewModel::onSessionIdChanged,
         onMicrophoneClick = {
             when {
                 uiState.phase == VoiceInterviewPhase.Listening -> stopRecording()
@@ -337,8 +345,19 @@ private fun VoiceInterviewRoute(
                 else -> requestPermissionAndRecord(PendingRecordingAction.Start)
             }
         },
-        onRepeatLastQuestion = voiceInterviewViewModel::onRepeatLastQuestion,
+        onRepeatLastQuestion = {
+            val audioUrl = voiceInterviewViewModel.onRepeatLastQuestionRequested()
+            if (audioUrl != null) {
+                audioReplyPlayer.play(
+                    url = audioUrl,
+                    onStarted = voiceInterviewViewModel::onAssistantPlaybackStarted,
+                    onCompleted = voiceInterviewViewModel::onAssistantPlaybackCompleted,
+                    onError = voiceInterviewViewModel::onAssistantPlaybackFailed,
+                )
+            }
+        },
         onRetrySpeech = {
+            audioReplyPlayer.stop()
             voiceInterviewViewModel.onRetrySpeechReady()
             if (uiState.hasRecordAudioPermission) {
                 startRecording(true)
@@ -348,6 +367,7 @@ private fun VoiceInterviewRoute(
         },
         onEndSession = {
             recorder.discard()
+            audioReplyPlayer.stop()
             voiceInterviewViewModel.onEndSession()
         },
     )
@@ -356,6 +376,9 @@ private fun VoiceInterviewRoute(
 @Composable
 private fun VoiceInterviewScreen(
     uiState: VoiceInterviewUiState,
+    onServerBaseUrlChanged: (String) -> Unit,
+    onUserIdChanged: (String) -> Unit,
+    onSessionIdChanged: (String) -> Unit,
     onMicrophoneClick: () -> Unit,
     onRepeatLastQuestion: () -> Unit,
     onRetrySpeech: () -> Unit,
@@ -363,6 +386,32 @@ private fun VoiceInterviewScreen(
 ) {
     ScreenContainer {
         HeadingText(text = "음성 인터뷰 준비 화면")
+        BodyText(text = "테스트용 서버 연결 정보를 먼저 입력한 뒤 녹음을 업로드합니다.")
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.serverBaseUrl,
+            onValueChange = onServerBaseUrlChanged,
+            label = { Text("서버 주소") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.userIdInput,
+            onValueChange = onUserIdChanged,
+            label = { Text("테스트 사용자 ID") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.sessionIdInput,
+            onValueChange = onSessionIdChanged,
+            label = { Text("세션 ID") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
         StatusCard(
             title = "현재 상태",
             content = voicePhaseLabel(uiState.phase),
@@ -384,11 +433,29 @@ private fun VoiceInterviewScreen(
         )
         Spacer(modifier = Modifier.height(12.dp))
         StatusCard(
+            title = "오디오 응답 경로",
+            content = uiState.lastAssistantAudioUrl ?: "아직 준비된 오디오 응답이 없습니다.",
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        StatusCard(
             title = "임시 저장 경로",
             content = uiState.currentRecordingPath
                 ?: uiState.lastSavedRecordingPath
                 ?: "cache/voice-recordings/voice_turn_{timestamp}.m4a",
         )
+        if (uiState.phase == VoiceInterviewPhase.Transcribing ||
+            uiState.phase == VoiceInterviewPhase.Responding
+        ) {
+            Spacer(modifier = Modifier.height(12.dp))
+            LoadingPlaceholder(message = "녹음 파일을 업로드하고 응답을 기다리는 중입니다.")
+        }
+        if (uiState.errorMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = "실패 상태",
+                content = uiState.errorMessage,
+            )
+        }
         if (uiState.isPermissionDenied) {
             Spacer(modifier = Modifier.height(12.dp))
             StatusCard(
@@ -574,7 +641,7 @@ private fun StatusCard(title: String, content: String) {
 }
 
 @Composable
-private fun LoadingPlaceholder() {
+private fun LoadingPlaceholder(message: String = "로그인을 확인하는 중입니다.") {
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -585,7 +652,7 @@ private fun LoadingPlaceholder() {
         ) {
             CircularProgressIndicator()
             Text(
-                text = "로그인을 확인하는 중입니다.",
+                text = message,
                 style = MaterialTheme.typography.bodyLarge,
                 fontSize = 18.sp,
             )

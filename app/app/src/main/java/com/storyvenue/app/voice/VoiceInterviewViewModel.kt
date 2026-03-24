@@ -5,8 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class VoiceInterviewPhase {
@@ -19,21 +20,40 @@ enum class VoiceInterviewPhase {
 
 data class VoiceInterviewUiState(
     val phase: VoiceInterviewPhase = VoiceInterviewPhase.Idle,
-    val lastAssistantQuestion: String = "어릴 때 가장 먼저 떠오르는 장소를 말씀해 주세요.",
+    val serverBaseUrl: String = "http://10.0.2.2:8000",
+    val userIdInput: String = "",
+    val sessionIdInput: String = "",
+    val lastAssistantQuestion: String = "assistant 응답이 오면 여기에 표시됩니다.",
     val transcriptPlaceholder: String = "아직 인식된 내용이 없습니다.",
-    val helperText: String = "마이크 버튼을 누르면 음성 인터뷰를 시작하는 흐름을 먼저 확인할 수 있습니다.",
+    val helperText: String = "서버 주소, 사용자 ID, 세션 ID를 입력한 뒤 마이크 버튼을 눌러 말씀해 주세요.",
+    val errorMessage: String? = null,
     val hasRecordAudioPermission: Boolean = false,
     val isPermissionDenied: Boolean = false,
     val currentRecordingPath: String? = null,
     val lastSavedRecordingPath: String? = null,
+    val lastAssistantAudioUrl: String? = null,
     val isSessionEnded: Boolean = false,
 )
 
-class VoiceInterviewViewModel : ViewModel() {
+class VoiceInterviewViewModel(
+    private val voiceTurnRepository: VoiceTurnRepository = VoiceTurnRepository(),
+) : ViewModel() {
     var uiState by mutableStateOf(VoiceInterviewUiState())
         private set
 
     private var flowJob: Job? = null
+
+    fun onServerBaseUrlChanged(value: String) {
+        uiState = uiState.copy(serverBaseUrl = value, errorMessage = null)
+    }
+
+    fun onUserIdChanged(value: String) {
+        uiState = uiState.copy(userIdInput = value, errorMessage = null)
+    }
+
+    fun onSessionIdChanged(value: String) {
+        uiState = uiState.copy(sessionIdInput = value, errorMessage = null)
+    }
 
     fun onPermissionStateChecked(isGranted: Boolean) {
         uiState = uiState.copy(
@@ -44,6 +64,7 @@ class VoiceInterviewViewModel : ViewModel() {
 
     fun onPermissionRequestStarted() {
         uiState = uiState.copy(
+            errorMessage = null,
             helperText = "마이크 권한을 요청합니다. 허용해 주시면 바로 녹음을 시작합니다.",
         )
     }
@@ -52,6 +73,7 @@ class VoiceInterviewViewModel : ViewModel() {
         uiState = uiState.copy(
             hasRecordAudioPermission = true,
             isPermissionDenied = false,
+            errorMessage = null,
             helperText = "권한이 허용되었습니다. 마이크를 눌러 말씀해 주세요.",
         )
     }
@@ -62,6 +84,7 @@ class VoiceInterviewViewModel : ViewModel() {
             isPermissionDenied = true,
             phase = VoiceInterviewPhase.Idle,
             currentRecordingPath = null,
+            errorMessage = "마이크 권한이 없어 녹음을 시작할 수 없습니다.",
             helperText = "마이크 권한이 없어 녹음을 시작할 수 없습니다. 다시 시도해 주세요.",
         )
     }
@@ -77,6 +100,7 @@ class VoiceInterviewViewModel : ViewModel() {
             } else {
                 "아직 인식된 내용이 없습니다."
             },
+            errorMessage = null,
             helperText = "듣는 중입니다. 말씀을 마치면 마이크 버튼을 한 번 더 눌러 주세요.",
         )
     }
@@ -86,19 +110,73 @@ class VoiceInterviewViewModel : ViewModel() {
         uiState = uiState.copy(
             phase = VoiceInterviewPhase.Idle,
             currentRecordingPath = null,
+            errorMessage = message,
             helperText = message,
         )
     }
 
     fun onRecordingStopped(recordingPath: String) {
         flowJob?.cancel()
+
+        val uploadConfig = buildUploadConfig().getOrElse { error ->
+            uiState = uiState.copy(
+                phase = VoiceInterviewPhase.Idle,
+                currentRecordingPath = null,
+                lastSavedRecordingPath = recordingPath,
+                errorMessage = error.message,
+                helperText = "업로드를 시작할 수 없습니다. 입력값을 확인해 주세요.",
+            )
+            return
+        }
+
+        val recordingFile = File(recordingPath)
+        if (!recordingFile.exists()) {
+            uiState = uiState.copy(
+                phase = VoiceInterviewPhase.Idle,
+                currentRecordingPath = null,
+                lastSavedRecordingPath = recordingPath,
+                errorMessage = "녹음 파일을 찾을 수 없습니다.",
+                helperText = "업로드를 시작할 수 없습니다. 녹음을 다시 시도해 주세요.",
+            )
+            return
+        }
+
         uiState = uiState.copy(
             phase = VoiceInterviewPhase.Transcribing,
             currentRecordingPath = null,
             lastSavedRecordingPath = recordingPath,
-            helperText = "녹음을 멈추고 임시 저장했습니다. 실제 STT 연결 전 단계입니다.",
+            errorMessage = null,
+            helperText = "녹음 파일을 업로드하고 transcript 와 assistant 응답을 가져오는 중입니다.",
         )
-        simulateTranscriptionFlow()
+
+        flowJob = viewModelScope.launch {
+            voiceTurnRepository.uploadVoiceTurn(
+                config = uploadConfig,
+                audioFile = recordingFile,
+            ).fold(
+                onSuccess = { result ->
+                    uiState = uiState.copy(
+                        phase = VoiceInterviewPhase.Idle,
+                        transcriptPlaceholder = result.transcript,
+                        lastAssistantQuestion = result.assistantMessage.content,
+                        lastAssistantAudioUrl = result.audioReplyUrl,
+                        errorMessage = null,
+                        helperText = if (result.audioReplyUrl != null) {
+                            "assistant 응답을 받았습니다. 다시 듣기 버튼으로 재생할 수 있습니다."
+                        } else {
+                            "assistant 응답을 받았지만 재생 가능한 오디오 응답이 없습니다."
+                        },
+                    )
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        phase = VoiceInterviewPhase.Idle,
+                        errorMessage = error.message ?: "음성 업로드에 실패했습니다.",
+                        helperText = "업로드에 실패했습니다. 서버 주소와 세션 정보를 확인해 주세요.",
+                    )
+                },
+            )
+        }
     }
 
     fun onRecordingStopFailed(message: String) {
@@ -106,31 +184,56 @@ class VoiceInterviewViewModel : ViewModel() {
         uiState = uiState.copy(
             phase = VoiceInterviewPhase.Idle,
             currentRecordingPath = null,
+            errorMessage = message,
             helperText = message,
         )
     }
 
-    fun onRepeatLastQuestion() {
-        if (uiState.lastAssistantQuestion.isBlank()) return
-
-        flowJob?.cancel()
-        flowJob = viewModelScope.launch {
+    fun onRepeatLastQuestionRequested(): String? {
+        val audioUrl = uiState.lastAssistantAudioUrl
+        if (audioUrl.isNullOrBlank()) {
             uiState = uiState.copy(
-                phase = VoiceInterviewPhase.Playing,
-                helperText = "마지막 질문을 다시 들려주는 placeholder 흐름입니다.",
+                errorMessage = "재생할 assistant 오디오가 아직 없습니다.",
+                helperText = "먼저 녹음을 업로드해 assistant 응답을 받아 주세요.",
             )
-            delay(900)
-            uiState = uiState.copy(
-                phase = VoiceInterviewPhase.Idle,
-                helperText = "다시 듣기가 끝났습니다. 필요하면 다시 말하기를 누르거나 마이크를 눌러 주세요.",
-            )
+            return null
         }
+
+        uiState = uiState.copy(
+            errorMessage = null,
+            helperText = "assistant 오디오 재생을 준비합니다.",
+        )
+        return audioUrl
+    }
+
+    fun onAssistantPlaybackStarted() {
+        uiState = uiState.copy(
+            phase = VoiceInterviewPhase.Playing,
+            errorMessage = null,
+            helperText = "assistant 오디오를 재생하는 중입니다.",
+        )
+    }
+
+    fun onAssistantPlaybackCompleted() {
+        uiState = uiState.copy(
+            phase = VoiceInterviewPhase.Idle,
+            helperText = "재생이 끝났습니다. 필요하면 다시 듣기 또는 다시 말하기를 사용할 수 있습니다.",
+        )
+    }
+
+    fun onAssistantPlaybackFailed(message: String) {
+        uiState = uiState.copy(
+            phase = VoiceInterviewPhase.Idle,
+            errorMessage = message,
+            helperText = "오디오 재생에 실패했습니다. 서버 주소와 네트워크를 확인해 주세요.",
+        )
     }
 
     fun onRetrySpeechReady() {
         flowJob?.cancel()
         uiState = uiState.copy(
             transcriptPlaceholder = "다시 말하기를 시작합니다. 아직 인식된 내용이 없습니다.",
+            errorMessage = null,
             helperText = "다시 말하기를 준비했습니다. 마이크 권한이 있으면 바로 녹음을 시작합니다.",
         )
     }
@@ -141,6 +244,7 @@ class VoiceInterviewViewModel : ViewModel() {
             phase = VoiceInterviewPhase.Idle,
             currentRecordingPath = null,
             isSessionEnded = true,
+            errorMessage = null,
             helperText = "세션을 종료하고 홈으로 돌아갑니다.",
         )
     }
@@ -149,32 +253,29 @@ class VoiceInterviewViewModel : ViewModel() {
         uiState = uiState.copy(isSessionEnded = false)
     }
 
-    private fun simulateTranscriptionFlow() {
-        flowJob?.cancel()
-        flowJob = viewModelScope.launch {
-            uiState = uiState.copy(
-                phase = VoiceInterviewPhase.Transcribing,
-                helperText = "변환 중 placeholder 입니다. 실제 STT 연결 전 단계입니다.",
-            )
-            delay(900)
+    private fun buildUploadConfig(): Result<VoiceTurnRequestConfig> {
+        return runCatching {
+            val baseUrl = uiState.serverBaseUrl.trim()
+            val userId = uiState.userIdInput.trim()
+            val sessionId = uiState.sessionIdInput.trim()
 
-            uiState = uiState.copy(
-                phase = VoiceInterviewPhase.Responding,
-                transcriptPlaceholder = "초등학교 때는 여름마다 할머니 댁에 갔어요.",
-                helperText = "답변하는 중 placeholder 입니다. AI 반응을 준비하는 흐름만 먼저 보여줍니다.",
-            )
-            delay(900)
+            require(baseUrl.isNotBlank()) {
+                "서버 주소를 입력해 주세요."
+            }
+            require(userId.isNotBlank()) {
+                "테스트용 사용자 ID를 입력해 주세요."
+            }
+            require(sessionId.isNotBlank()) {
+                "세션 ID를 입력해 주세요."
+            }
 
-            uiState = uiState.copy(
-                phase = VoiceInterviewPhase.Playing,
-                lastAssistantQuestion = "그때 가장 반가웠던 사람은 누구였나요?",
-                helperText = "음성 재생 중 placeholder 입니다. 실제 TTS 연결 전 단계입니다.",
-            )
-            delay(900)
+            UUID.fromString(userId)
+            UUID.fromString(sessionId)
 
-            uiState = uiState.copy(
-                phase = VoiceInterviewPhase.Idle,
-                helperText = "다음 질문이 준비되었습니다. 필요하면 다시 듣기 또는 다시 말하기를 사용할 수 있습니다.",
+            VoiceTurnRequestConfig(
+                baseUrl = baseUrl,
+                userId = userId,
+                sessionId = sessionId,
             )
         }
     }

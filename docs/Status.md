@@ -2,7 +2,7 @@
 
 ## Current project status
 Milestone 1 범위의 server/app 뼈대 구현 완료.
-현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음 뼈대까지 준비된 최소 실행 단계다.
+현재는 FastAPI `/health`, `/sessions`, `/messages/{session_id}`, `/voice/turn`, Android placeholder 화면 5개, Supabase 설정/클라이언트 초기화 구조, 이메일 로그인 뼈대, Voice Interview 상태/UI 이벤트/권한/녹음/업로드 뼈대까지 준비된 최소 실행 단계다.
 
 ## Decisions made
 - 플랫폼: Android native Kotlin
@@ -21,6 +21,7 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/voice/turn` 구현도 실제 인증 미들웨어 전까지 임시 `X-User-Id` header 로 사용자 문맥을 받는다.
 - OpenAI STT key 와 모델 설정은 server `.env` 로만 관리한다.
 - OpenAI TTS 결과는 서버 로컬 mp3 파일로 저장하고 `/generated-audio/...` 경로로 노출한다.
+- Android app 의 `/voice/turn` 연결은 테스트용 서버 주소, 사용자 ID, 세션 ID 입력값으로 동작시킨다.
 
 ## Done
 - 프로젝트 문서 초안 작성
@@ -56,6 +57,10 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/voice/turn` 기본 TTS 를 OpenAI service 로 교체
 - FastAPI 정적 경로 `/generated-audio` 추가
 - OpenAI TTS service 단위 smoke test 확인
+- Android app 에 `/voice/turn` multipart 업로드 클라이언트 추가
+- Voice Interview 화면에 서버 주소, 사용자 ID, 세션 ID 입력 필드 추가
+- 업로드 로딩, transcript 표시, assistant 텍스트 표시, 실패 상태 표시 추가
+- assistant 오디오 응답 URL 표시와 `MediaPlayer` 재생 연결 지점 추가
 - Android app 기본 프로젝트 구조 생성
 - Login, Home, Voice Interview, Draft, Book Preview placeholder 화면 추가
 - Compose 기반 단일 Activity 와 navigation 구조 추가
@@ -79,16 +84,18 @@ Milestone 1 범위의 server/app 뼈대 구현 완료.
 - `/voice/turn` 는 memory extraction, safety 판별, 오디오 장기 저장 없이 최소 응답만 반환한다.
 - TTS 파일은 현재 서버 로컬 디스크에 저장되며 만료/정리 정책이 아직 없다.
 - OpenAI TTS voices 는 영어 최적화 기준이라 한국어 음성 품질과 속도는 실기기 테스트가 필요하다.
+- app 의 voice 업로드는 현재 실제 로그인/세션 생성 연동이 없어서 사용자 ID 와 세션 ID 를 수동 입력해야 한다.
+- app 의 오디오 응답 재생은 연결 지점까지 구현했지만, 한국어 음성 품질과 로컬 서버 네트워크 조건은 수동 청취 테스트가 필요하다.
 - memory, chapter 쪽 DB 접근용 service/repository 계층은 아직 없다.
 - 로그인은 placeholder AuthRepository 기반이며 실제 Supabase Auth 연동이 아직 없다.
-- Voice Interview 는 권한/녹음 뼈대까지 있으며 실제 STT, TTS, 서버 업로드 연결이 아직 없다.
+- Voice Interview 는 `/voice/turn` 업로드 흐름까지 연결했지만, 실제 auth/session 값을 자동 주입하는 연결은 아직 없다.
 - MediaRecorder 동작과 권한 UX 는 실기기 확인이 아직 없다.
 - Draft, Book Preview 화면은 아직 실제 데이터 연결이 없다.
 
 ## Next
 1. Supabase 스키마 초안 작성
 2. 로그인 화면에 실제 Supabase Auth 연동
-3. `/voice/turn` 의 assistant 텍스트 생성 mock service 를 실제 OpenAI 연동으로 교체
+3. app 의 로그인/세션 생성 흐름과 `/voice/turn` 입력값을 실제 auth/session 데이터로 연결
 4. 서버의 memory, chapter API 초안 구현
 5. placeholder 화면을 실제 데이터 흐름과 연결
 
@@ -106,6 +113,15 @@ app 실행:
 app 검증:
 - Kotlin 컴파일 확인: `./gradlew :app:compileDebugKotlin`
 - Debug 빌드 확인: `./gradlew :app:assembleDebug` 성공
+- Voice Interview 수동 테스트:
+- server 에서 `uvicorn app.main:app --reload` 실행
+- 별도 터미널에서 같은 `X-User-Id` 로 세션을 먼저 생성해 `session_uuid` 확보
+- Android Emulator 기준 서버 주소에 `http://10.0.2.2:8000` 입력
+- app Voice Interview 화면에서 사용자 ID 와 세션 ID 입력
+- 마이크 권한 허용 후 짧게 녹음하고 업로드
+- 업로드 중 로딩 상태, transcript 표시, assistant 텍스트 표시 확인
+- 서버를 중지하거나 잘못된 주소를 넣어 실패 상태 카드 표시 확인
+- 다시 듣기 버튼으로 mp3 재생 연결이 시도되는지 확인
 
 server .env 항목:
 - `APP_ENV=local`
@@ -153,11 +169,13 @@ server 검증:
 - OpenAI TTS service 는 fake OpenAI client 기반으로 mp3 파일 저장과 URL 반환을 확인
 
 ## Device test
-- 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음 뼈대까지 검증했다.
+- 현재 app milestone 은 빌드, 로그인 뼈대, Voice Interview 권한/녹음/업로드 흐름까지 검증했다.
 - 실기기 테스트 필요 항목:
 - `RECORD_AUDIO` 권한 허용 / 1회 거부 / 재요청 흐름 확인
 - 녹음 시작 후 중지 시 `cache/voice-recordings/*.m4a` 임시 파일 생성 확인
 - 너무 짧은 녹음에서도 앱이 비정상 종료하지 않는지 확인
+- `/voice/turn` 업로드 후 transcript 와 assistant 텍스트가 정상 표시되는지 확인
+- `/generated-audio/...mp3` 응답이 실제 기기에서 재생되는지 확인
 - 세션 종료 시 진행 중 녹음 정리 동작 확인
 - 실제 기기 마이크 품질과 MediaRecorder 시작/중지 타이밍 확인
 
@@ -202,9 +220,11 @@ server 검증:
 - `app/app/src/main/java/com/storyvenue/app/auth/AuthRepository.kt`
 - `app/app/src/main/java/com/storyvenue/app/auth/PlaceholderAuthRepository.kt`
 - `app/app/src/main/java/com/storyvenue/app/auth/LoginViewModel.kt`
+- `app/app/src/main/java/com/storyvenue/app/voice/AudioReplyPlayer.kt`
 - `app/app/src/main/java/com/storyvenue/app/voice/VoiceInterviewViewModel.kt`
 - `app/app/src/main/java/com/storyvenue/app/voice/VoiceRecorder.kt`
 - `app/app/src/main/java/com/storyvenue/app/voice/VoiceRecordingFileStore.kt`
+- `app/app/src/main/java/com/storyvenue/app/voice/VoiceTurnRepository.kt`
 - `app/app/src/main/res/values/strings.xml`
 - `app/app/src/main/java/com/storyvenue/app/MainActivity.kt`
 - `app/app/src/main/java/com/storyvenue/app/ui/StoryVenueApp.kt`
@@ -215,9 +235,10 @@ server 검증:
 - 안전 관련 발화는 자서전 인터뷰보다 우선한다.
 - 음성 기능은 실기기에서 검증해야 한다.
 - 로그인은 현재 placeholder 인증 흐름이며 실제 Supabase Auth 교체가 TODO 로 남아 있다.
-- Voice Interview 는 현재 권한/녹음 뼈대까지 구현했고 실제 STT/TTS/업로드 연결이 TODO 로 남아 있다.
+- Voice Interview 는 현재 `/voice/turn` 업로드, transcript 표시, assistant 텍스트 표시, 오디오 재생 연결 지점까지 구현했고 auth/session 자동 연결이 TODO 로 남아 있다.
 - `/sessions` 는 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
 - `/messages` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
 - `/voice/turn` 도 현재 임시 `X-User-Id` header 기반이며 실제 Supabase Auth 검증으로 교체해야 한다.
 - `/voice/turn` 의 STT 와 TTS 는 현재 OpenAI service 로 처리하고, assistant 텍스트 응답 생성은 아직 mock 구현이다.
 - 한국어 TTS voice 선택과 발화 속도는 실기기 청취 테스트 후 조정해야 한다.
+- Android app 의 Voice Interview 업로드는 현재 테스트용 서버 주소, 사용자 ID, 세션 ID 수동 입력 방식이다.
