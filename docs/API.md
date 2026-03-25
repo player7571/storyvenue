@@ -176,3 +176,88 @@
 ## GET /book/versions/{book_id}
 설명:
 - 저장된 최종 자서전 버전 단건 조회
+
+## POST /feed/publish
+설명:
+- 저장된 자서전 버전을 공개 피드 글로 게시
+- 게시 시 서버가 OpenAI 로 `summary`, `topics`, `emotions`, `experiences` 를 분석해 저장
+
+요청 예시:
+```json
+{
+  "book_id": "book_uuid"
+}
+```
+
+## GET /feed
+설명:
+- 읽기 행동 로그와 자서전 분석 결과를 결합해 추천 피드 목록 조회
+- `query` query string 으로 특정 주제나 경험을 추가 반영 가능
+
+## GET /feed/people/recommended
+설명:
+- 비슷한 삶의 경험을 가진 작성자 추천
+- `query` query string 으로 관심사 기반 추천 보정 가능
+
+## GET /feed/{post_id}
+설명:
+- 단일 피드 글 상세 조회
+
+## GET /feed/{post_id}/comments
+설명:
+- 피드 글 댓글 목록 조회
+
+## POST /feed/{post_id}/comments
+설명:
+- 피드 글 댓글 작성
+
+요청 예시:
+```json
+{
+  "content": "저도 비슷한 경험이 있어서 공감이 됩니다."
+}
+```
+
+## POST /feed/{post_id}/read
+설명:
+- 추천용 읽기 행동 기록 저장
+- 체류 시간과 완독 여부를 기록한다
+
+요청 예시:
+```json
+{
+  "dwell_seconds": 54,
+  "completed": true,
+  "query_text": "은퇴 후 삶"
+}
+```
+
+## GET /chat/rooms
+설명:
+- 현재 사용자 1:1 채팅방 목록 조회
+
+## POST /chat/rooms
+설명:
+- 특정 사용자와 1:1 채팅방 생성 또는 기존 채팅방 재사용
+
+요청 예시:
+```json
+{
+  "other_user_id": "user_uuid"
+}
+```
+
+## GET /chat/rooms/{room_id}/messages
+설명:
+- 채팅방 메시지 목록 조회
+
+## POST /chat/rooms/{room_id}/messages
+설명:
+- 채팅방에 새 메시지 전송
+
+요청 예시:
+```json
+{
+  "content": "안녕하세요. 글 잘 읽었습니다."
+}
+```

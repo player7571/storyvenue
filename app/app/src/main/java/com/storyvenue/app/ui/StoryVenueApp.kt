@@ -58,6 +58,11 @@ import androidx.navigation.compose.rememberNavController
 import com.storyvenue.app.AuthMode
 import com.storyvenue.app.BookVersion
 import com.storyvenue.app.ChapterDraft
+import com.storyvenue.app.ChatMessage
+import com.storyvenue.app.ChatRoom
+import com.storyvenue.app.FeedComment
+import com.storyvenue.app.FeedPerson
+import com.storyvenue.app.FeedPost
 import com.storyvenue.app.InterviewSessionSummary
 import com.storyvenue.app.SessionMessage
 import com.storyvenue.app.StoryVenueUiState
@@ -80,6 +85,9 @@ private enum class StoryVenueScreen(val route: String, val title: String) {
     VoiceInterview("voice_interview", "음성 인터뷰"),
     Draft("draft", "초안"),
     BookPreview("book_preview", "책 미리보기"),
+    Feed("feed", "피드"),
+    FeedPost("feed_post", "자서전"),
+    Chat("chat", "채팅"),
 }
 
 @Composable
@@ -128,6 +136,17 @@ private fun StoryVenueScaffold(
         }
     }
 
+    LaunchedEffect(uiState.pendingChatNavigationRoomId) {
+        val roomId = uiState.pendingChatNavigationRoomId ?: return@LaunchedEffect
+        if (currentScreen != StoryVenueScreen.Chat) {
+            navController.navigate(StoryVenueScreen.Chat.route) {
+                launchSingleTop = true
+            }
+        }
+        storyVenueViewModel.onPendingChatNavigationConsumed()
+        storyVenueViewModel.selectChatRoom(roomId)
+    }
+
     Scaffold(
         topBar = {
             if (currentScreen != StoryVenueScreen.Login) {
@@ -169,6 +188,9 @@ private fun StoryVenueScaffold(
                     onOpenBookPreview = {
                         navController.navigate(StoryVenueScreen.BookPreview.route)
                     },
+                    onOpenFeed = {
+                        navController.navigate(StoryVenueScreen.Feed.route)
+                    },
                     onSignOut = storyVenueViewModel::signOut,
                 )
             }
@@ -208,9 +230,62 @@ private fun StoryVenueScaffold(
                     onSelectBook = storyVenueViewModel::selectBook,
                     onMoveChapterUp = storyVenueViewModel::moveChapterUp,
                     onMoveChapterDown = storyVenueViewModel::moveChapterDown,
+                    onPublishToFeed = storyVenueViewModel::publishSelectedBookToFeed,
+                    onOpenFeed = {
+                        navController.navigate(StoryVenueScreen.Feed.route)
+                    },
                     onReturnHome = {
                         navController.navigate(StoryVenueScreen.Home.route) {
                             popUpTo(StoryVenueScreen.Home.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+            composable(StoryVenueScreen.Feed.route) {
+                LaunchedEffect(Unit) {
+                    storyVenueViewModel.refreshFeedRecommendations()
+                    storyVenueViewModel.loadChatRooms()
+                }
+                FeedScreen(
+                    uiState = uiState,
+                    onFeedQueryChanged = storyVenueViewModel::onFeedQueryChanged,
+                    onRefreshFeed = storyVenueViewModel::refreshFeedRecommendations,
+                    onPublishToFeed = storyVenueViewModel::publishSelectedBookToFeed,
+                    onOpenPost = { postId ->
+                        storyVenueViewModel.selectFeedPost(postId)
+                        navController.navigate(StoryVenueScreen.FeedPost.route)
+                    },
+                    onOpenChat = {
+                        navController.navigate(StoryVenueScreen.Chat.route)
+                    },
+                    onStartChatWithUser = storyVenueViewModel::startChatWithUser,
+                )
+            }
+            composable(StoryVenueScreen.FeedPost.route) {
+                FeedPostRoute(
+                    uiState = uiState,
+                    storyVenueViewModel = storyVenueViewModel,
+                    onBackToFeed = {
+                        navController.navigate(StoryVenueScreen.Feed.route) {
+                            popUpTo(StoryVenueScreen.Feed.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+            composable(StoryVenueScreen.Chat.route) {
+                LaunchedEffect(Unit) {
+                    storyVenueViewModel.loadChatRooms()
+                }
+                ChatScreen(
+                    uiState = uiState,
+                    onSelectRoom = storyVenueViewModel::selectChatRoom,
+                    onChatMessageChanged = storyVenueViewModel::onChatMessageChanged,
+                    onSendMessage = storyVenueViewModel::sendChatMessage,
+                    onBackToFeed = {
+                        navController.navigate(StoryVenueScreen.Feed.route) {
+                            popUpTo(StoryVenueScreen.Feed.route) { inclusive = false }
                             launchSingleTop = true
                         }
                     },
@@ -317,6 +392,7 @@ private fun HomeScreen(
     onOpenVoiceInterview: () -> Unit,
     onOpenDraft: () -> Unit,
     onOpenBookPreview: () -> Unit,
+    onOpenFeed: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val selectedSession = uiState.sessions.firstOrNull { it.id == uiState.selectedSessionId }
@@ -410,6 +486,11 @@ private fun HomeScreen(
             label = "책 미리보기",
             onClick = onOpenBookPreview,
             enabled = uiState.chapters.isNotEmpty() || uiState.books.isNotEmpty(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "공감 피드",
+            onClick = onOpenFeed,
         )
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedActionButton(
@@ -798,6 +879,8 @@ private fun BookPreviewScreen(
     onSelectBook: (String) -> Unit,
     onMoveChapterUp: (Int) -> Unit,
     onMoveChapterDown: (Int) -> Unit,
+    onPublishToFeed: () -> Unit,
+    onOpenFeed: () -> Unit,
     onReturnHome: () -> Unit,
 ) {
     ScreenContainer {
@@ -874,9 +957,353 @@ private fun BookPreviewScreen(
                 title = uiState.compiledBook.title,
                 content = uiState.compiledBook.content,
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedActionButton(
+                    label = "피드에 올리기",
+                    onClick = onPublishToFeed,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedActionButton(
+                    label = "피드 보기",
+                    onClick = onOpenFeed,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         Spacer(modifier = Modifier.height(20.dp))
         PrimaryActionButton(label = "홈으로 돌아가기", onClick = onReturnHome)
+    }
+}
+
+@Composable
+private fun FeedScreen(
+    uiState: StoryVenueUiState,
+    onFeedQueryChanged: (String) -> Unit,
+    onRefreshFeed: () -> Unit,
+    onPublishToFeed: () -> Unit,
+    onOpenPost: (String) -> Unit,
+    onOpenChat: () -> Unit,
+    onStartChatWithUser: (String) -> Unit,
+) {
+    val selectedBook = uiState.compiledBook
+        ?: uiState.selectedBookId?.let { selectedId -> uiState.books.firstOrNull { it.id == selectedId } }
+        ?: uiState.books.firstOrNull()
+    val currentUserId = uiState.authSession?.userId
+
+    ScreenContainer {
+        HeadingText(text = "공감 피드")
+        BodyText(text = "비슷한 삶의 경험과 관심사를 바탕으로 자서전을 추천하고, 댓글과 채팅으로 연결할 수 있습니다.")
+        Spacer(modifier = Modifier.height(12.dp))
+        if (selectedBook != null) {
+            StatusCard(
+                title = "올릴 준비가 된 자서전",
+                content = selectedBook.title,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            PrimaryActionButton(
+                label = "선택한 자서전 피드에 올리기",
+                onClick = onPublishToFeed,
+                enabled = !uiState.isFeedLoading,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        OutlinedTextField(
+            value = uiState.feedQueryInput,
+            onValueChange = onFeedQueryChanged,
+            label = { Text("찾고 싶은 주제나 경험") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedActionButton(
+                label = "추천 새로고침",
+                onClick = onRefreshFeed,
+                modifier = Modifier.weight(1f),
+                enabled = !uiState.isFeedLoading,
+            )
+            OutlinedActionButton(
+                label = "채팅 보기",
+                onClick = onOpenChat,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (uiState.isFeedLoading) {
+            Spacer(modifier = Modifier.height(12.dp))
+            LoadingPlaceholder(message = "추천 피드를 불러오는 중입니다.")
+        }
+        if (uiState.feedStatusMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = "안내",
+                content = uiState.feedStatusMessage,
+            )
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        HeadingText(text = "비슷한 사람")
+        if (uiState.recommendedPeople.isEmpty()) {
+            StatusCard(
+                title = "빈 상태",
+                content = "아직 추천할 사람이 없습니다. 자서전을 올리거나 몇 개의 글을 읽어 보세요.",
+            )
+        } else {
+            uiState.recommendedPeople.forEach { person ->
+                RecommendedPersonCard(
+                    person = person,
+                    onStartChat = { onStartChatWithUser(person.userId) },
+                    canChat = currentUserId != null && currentUserId != person.userId,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        HeadingText(text = "추천 자서전")
+        if (uiState.feedPosts.isEmpty()) {
+            StatusCard(
+                title = "빈 상태",
+                content = "아직 피드 글이 없습니다. 먼저 자서전을 피드에 올려 보세요.",
+            )
+        } else {
+            uiState.feedPosts.forEach { post ->
+                FeedPostSummaryCard(
+                    post = post,
+                    onOpen = { onOpenPost(post.id) },
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeedPostRoute(
+    uiState: StoryVenueUiState,
+    storyVenueViewModel: StoryVenueViewModel,
+    onBackToFeed: () -> Unit,
+) {
+    val selectedPostId = uiState.selectedFeedPostId
+
+    LaunchedEffect(selectedPostId) {
+        if (selectedPostId != null && uiState.selectedFeedPost?.id != selectedPostId) {
+            storyVenueViewModel.selectFeedPost(selectedPostId)
+        }
+    }
+
+    val post = uiState.selectedFeedPost
+    if (post != null) {
+        var markedCompleted by remember(post.id) { mutableStateOf(false) }
+        DisposableEffect(post.id) {
+            val startedAt = System.currentTimeMillis()
+            onDispose {
+                val dwellSeconds = ((System.currentTimeMillis() - startedAt) / 1000L).toInt()
+                storyVenueViewModel.recordFeedRead(
+                    postId = post.id,
+                    dwellSeconds = dwellSeconds,
+                    completed = markedCompleted,
+                )
+            }
+        }
+
+        FeedPostScreen(
+            uiState = uiState,
+            post = post,
+            onFeedCommentChanged = storyVenueViewModel::onFeedCommentChanged,
+            onSubmitComment = storyVenueViewModel::submitFeedComment,
+            onMarkCompleted = { markedCompleted = true },
+            onStartChat = { storyVenueViewModel.startChatWithUser(post.userId) },
+            onBackToFeed = onBackToFeed,
+        )
+        return
+    }
+
+    ScreenContainer {
+        HeadingText(text = "피드 글")
+        if (uiState.isFeedLoading) {
+            LoadingPlaceholder(message = "피드 글을 불러오는 중입니다.")
+        } else {
+            StatusCard(
+                title = "선택 필요",
+                content = "먼저 피드 목록에서 읽고 싶은 자서전을 선택해 주세요.",
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            PrimaryActionButton(label = "피드로 돌아가기", onClick = onBackToFeed)
+        }
+    }
+}
+
+@Composable
+private fun FeedPostScreen(
+    uiState: StoryVenueUiState,
+    post: FeedPost,
+    onFeedCommentChanged: (String) -> Unit,
+    onSubmitComment: () -> Unit,
+    onMarkCompleted: () -> Unit,
+    onStartChat: () -> Unit,
+    onBackToFeed: () -> Unit,
+) {
+    val canStartChat = uiState.authSession?.userId != post.userId
+
+    ScreenContainer {
+        HeadingText(text = post.title)
+        BodyText(text = "${post.authorName} 님의 이야기")
+        Spacer(modifier = Modifier.height(12.dp))
+        if (!post.summary.isNullOrBlank()) {
+            StatusCard(
+                title = "AI 요약",
+                content = post.summary,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        if (post.topics.isNotEmpty() || post.experiences.isNotEmpty()) {
+            StatusCard(
+                title = "관련 키워드",
+                content = buildTagSummary(post),
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        StatusCard(
+            title = "본문",
+            content = post.content,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        if (uiState.feedStatusMessage != null) {
+            StatusCard(
+                title = "안내",
+                content = uiState.feedStatusMessage,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedActionButton(
+                label = "끝까지 읽었어요",
+                onClick = onMarkCompleted,
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedActionButton(
+                label = if (canStartChat) "이 작성자와 채팅" else "내 글입니다",
+                onClick = onStartChat,
+                modifier = Modifier.weight(1f),
+                enabled = canStartChat,
+            )
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        HeadingText(text = "댓글")
+        if (uiState.feedComments.isEmpty()) {
+            StatusCard(
+                title = "빈 상태",
+                content = "아직 댓글이 없습니다. 첫 댓글을 남겨 보세요.",
+            )
+        } else {
+            uiState.feedComments.forEach { comment ->
+                FeedCommentCard(comment = comment)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = uiState.feedCommentInput,
+            onValueChange = onFeedCommentChanged,
+            label = { Text("댓글 남기기") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        PrimaryActionButton(
+            label = "댓글 등록",
+            onClick = onSubmitComment,
+            enabled = !uiState.isFeedLoading,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(label = "피드로 돌아가기", onClick = onBackToFeed)
+    }
+}
+
+@Composable
+private fun ChatScreen(
+    uiState: StoryVenueUiState,
+    onSelectRoom: (String) -> Unit,
+    onChatMessageChanged: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    onBackToFeed: () -> Unit,
+) {
+    val selectedRoom = uiState.chatRooms.firstOrNull { it.id == uiState.selectedChatRoomId }
+    val currentUserId = uiState.authSession?.userId
+
+    ScreenContainer {
+        HeadingText(text = "채팅")
+        if (uiState.isChatLoading) {
+            LoadingPlaceholder(message = "채팅 정보를 불러오는 중입니다.")
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        if (uiState.chatStatusMessage != null) {
+            StatusCard(
+                title = "안내",
+                content = uiState.chatStatusMessage,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        HeadingText(text = "대화방")
+        if (uiState.chatRooms.isEmpty()) {
+            StatusCard(
+                title = "빈 상태",
+                content = "아직 시작한 대화가 없습니다. 피드에서 비슷한 사람에게 먼저 채팅을 걸어 보세요.",
+            )
+        } else {
+            uiState.chatRooms.forEach { room ->
+                ChatRoomCard(
+                    room = room,
+                    isSelected = room.id == uiState.selectedChatRoomId,
+                    onSelect = { onSelectRoom(room.id) },
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        HeadingText(text = selectedRoom?.otherUserName ?: "대화 내용")
+        if (selectedRoom == null) {
+            StatusCard(
+                title = "선택 필요",
+                content = "먼저 대화방을 하나 선택해 주세요.",
+            )
+        } else {
+            if (uiState.chatMessages.isEmpty()) {
+                StatusCard(
+                    title = "첫 메시지",
+                    content = "아직 메시지가 없습니다. 인사를 남겨 보세요.",
+                )
+            } else {
+                uiState.chatMessages.forEach { message ->
+                    ChatMessageCard(
+                        message = message,
+                        isMine = currentUserId == message.senderId,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = uiState.chatMessageInput,
+                onValueChange = onChatMessageChanged,
+                label = { Text("메시지") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            PrimaryActionButton(
+                label = "메시지 보내기",
+                onClick = onSendMessage,
+                enabled = !uiState.isChatLoading,
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(label = "피드로 돌아가기", onClick = onBackToFeed)
     }
 }
 
@@ -990,6 +1417,146 @@ private fun BookVersionCard(
                 onClick = onSelect,
                 enabled = !isSelected,
             )
+        }
+    }
+}
+
+@Composable
+private fun FeedPostSummaryCard(
+    post: FeedPost,
+    onOpen: () -> Unit,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = post.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(text = "${post.authorName} 님")
+            if (!post.summary.isNullOrBlank()) {
+                Text(text = post.summary)
+            } else {
+                Text(text = post.excerpt)
+            }
+            if (post.topics.isNotEmpty()) {
+                Text(text = "주제: ${post.topics.joinToString(", ")}")
+            }
+            if (post.score != null) {
+                Text(text = "추천 점수: ${"%.1f".format(post.score)}")
+            }
+            OutlinedActionButton(
+                label = "읽기",
+                onClick = onOpen,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecommendedPersonCard(
+    person: FeedPerson,
+    onStartChat: () -> Unit,
+    canChat: Boolean,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = person.authorName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            if (person.sharedTopics.isNotEmpty()) {
+                Text(text = "공통 주제: ${person.sharedTopics.joinToString(", ")}")
+            }
+            if (person.sharedExperiences.isNotEmpty()) {
+                Text(text = "공통 경험: ${person.sharedExperiences.joinToString(", ")}")
+            }
+            Text(text = "연결 점수: ${"%.1f".format(person.score)}")
+            OutlinedActionButton(
+                label = if (canChat) "채팅 시작" else "내 프로필",
+                onClick = onStartChat,
+                enabled = canChat,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeedCommentCard(comment: FeedComment) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = comment.authorName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(text = comment.content)
+        }
+    }
+}
+
+@Composable
+private fun ChatRoomCard(
+    room: ChatRoom,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = room.otherUserName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(text = room.lastMessagePreview ?: "아직 주고받은 메시지가 없습니다.")
+            OutlinedActionButton(
+                label = if (isSelected) "선택됨" else "대화 열기",
+                onClick = onSelect,
+                enabled = !isSelected,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageCard(
+    message: ChatMessage,
+    isMine: Boolean,
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = if (isMine) "나" else message.senderName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(text = message.content)
         }
     }
 }
@@ -1125,6 +1692,20 @@ private fun voiceMicButtonLabel(phase: VoiceInterviewPhase): String {
         VoiceInterviewPhase.Responding -> "답변 생성 중"
         VoiceInterviewPhase.Playing -> "다음 답변 말하기"
     }
+}
+
+private fun buildTagSummary(post: FeedPost): String {
+    val parts = mutableListOf<String>()
+    if (post.topics.isNotEmpty()) {
+        parts += "주제: ${post.topics.joinToString(", ")}"
+    }
+    if (post.experiences.isNotEmpty()) {
+        parts += "경험: ${post.experiences.joinToString(", ")}"
+    }
+    if (post.emotions.isNotEmpty()) {
+        parts += "감정: ${post.emotions.joinToString(", ")}"
+    }
+    return parts.joinToString("\n")
 }
 
 private fun hasRecordAudioPermission(context: Context): Boolean {

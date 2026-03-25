@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     openai_stt_prompt: str | None = None
     openai_text_model: str = "gpt-4.1-mini"
     openai_text_prompt: str | None = None
+    openai_feed_model: str = "gpt-4.1-mini"
+    openai_feed_prompt: str | None = None
     openai_memory_model: str = "gpt-4.1-mini"
     openai_memory_prompt: str | None = None
     openai_chapter_model: str = "gpt-4.1-mini"

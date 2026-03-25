@@ -64,6 +64,22 @@ data class StoryVenueUiState(
     val compiledBook: BookVersion? = null,
     val bookStatusMessage: String? = null,
     val isBookLoading: Boolean = false,
+    val feedQueryInput: String = "",
+    val feedPosts: List<FeedPost> = emptyList(),
+    val recommendedPeople: List<FeedPerson> = emptyList(),
+    val selectedFeedPostId: String? = null,
+    val selectedFeedPost: FeedPost? = null,
+    val feedComments: List<FeedComment> = emptyList(),
+    val feedCommentInput: String = "",
+    val feedStatusMessage: String? = null,
+    val isFeedLoading: Boolean = false,
+    val chatRooms: List<ChatRoom> = emptyList(),
+    val selectedChatRoomId: String? = null,
+    val chatMessages: List<ChatMessage> = emptyList(),
+    val chatMessageInput: String = "",
+    val chatStatusMessage: String? = null,
+    val isChatLoading: Boolean = false,
+    val pendingChatNavigationRoomId: String? = null,
 )
 
 class StoryVenueViewModel(
@@ -91,6 +107,8 @@ class StoryVenueViewModel(
             serverBaseUrl = value,
             authMessage = null,
             homeMessage = null,
+            feedStatusMessage = null,
+            chatStatusMessage = null,
         )
         prefs.edit().putString(KEY_SERVER_BASE_URL, value).apply()
     }
@@ -688,6 +706,362 @@ class StoryVenueViewModel(
         }
     }
 
+    fun onFeedQueryChanged(value: String) {
+        uiState = uiState.copy(
+            feedQueryInput = value,
+            feedStatusMessage = null,
+        )
+    }
+
+    fun onFeedCommentChanged(value: String) {
+        uiState = uiState.copy(
+            feedCommentInput = value,
+            feedStatusMessage = null,
+        )
+    }
+
+    fun refreshFeedRecommendations() {
+        val authSession = uiState.authSession ?: run {
+            uiState = uiState.copy(feedStatusMessage = "먼저 로그인해 주세요.")
+            return
+        }
+
+        uiState = uiState.copy(
+            isFeedLoading = true,
+            feedStatusMessage = null,
+        )
+
+        viewModelScope.launch {
+            val feedResult = repository.listFeedPosts(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                queryText = uiState.feedQueryInput,
+            )
+            val peopleResult = repository.listRecommendedPeople(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                queryText = uiState.feedQueryInput,
+            )
+
+            val feedPosts = feedResult.getOrElse { emptyList() }
+            val recommendedPeople = peopleResult.getOrElse { emptyList() }
+            val selectedPost = uiState.selectedFeedPostId?.let { selectedId ->
+                feedPosts.firstOrNull { it.id == selectedId } ?: uiState.selectedFeedPost
+            }
+
+            uiState = uiState.copy(
+                isFeedLoading = false,
+                feedPosts = feedPosts,
+                recommendedPeople = recommendedPeople,
+                selectedFeedPost = selectedPost,
+                feedStatusMessage = feedResult.exceptionOrNull()?.message,
+            )
+        }
+    }
+
+    fun publishSelectedBookToFeed() {
+        val authSession = uiState.authSession ?: run {
+            uiState = uiState.copy(feedStatusMessage = "먼저 로그인해 주세요.")
+            return
+        }
+        val book = uiState.compiledBook
+            ?: uiState.selectedBookId?.let { selectedId ->
+                uiState.books.firstOrNull { it.id == selectedId }
+            }
+            ?: uiState.books.firstOrNull()
+            ?: run {
+                uiState = uiState.copy(feedStatusMessage = "먼저 저장된 자서전 버전을 하나 준비해 주세요.")
+                return
+            }
+
+        uiState = uiState.copy(
+            isFeedLoading = true,
+            feedStatusMessage = null,
+        )
+
+        viewModelScope.launch {
+            repository.publishBookToFeed(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                bookId = book.id,
+            ).fold(
+                onSuccess = { post ->
+                    val updatedFeedPosts = listOf(post) + uiState.feedPosts.filterNot { it.id == post.id }
+                    uiState = uiState.copy(
+                        isFeedLoading = false,
+                        feedPosts = updatedFeedPosts,
+                        selectedFeedPostId = post.id,
+                        selectedFeedPost = post,
+                        feedComments = emptyList(),
+                        feedStatusMessage = "선택한 자서전을 피드에 올렸습니다.",
+                    )
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isFeedLoading = false,
+                        feedStatusMessage = error.message ?: "피드 게시에 실패했습니다.",
+                    )
+                },
+            )
+        }
+    }
+
+    fun selectFeedPost(postId: String) {
+        val authSession = uiState.authSession ?: run {
+            uiState = uiState.copy(feedStatusMessage = "먼저 로그인해 주세요.")
+            return
+        }
+
+        uiState = uiState.copy(
+            selectedFeedPostId = postId,
+            isFeedLoading = true,
+            feedStatusMessage = null,
+        )
+
+        viewModelScope.launch {
+            val postResult = repository.getFeedPost(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                postId = postId,
+            )
+            val commentsResult = repository.listFeedComments(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                postId = postId,
+            )
+
+            postResult.fold(
+                onSuccess = { post ->
+                    uiState = uiState.copy(
+                        isFeedLoading = false,
+                        selectedFeedPost = post,
+                        feedComments = commentsResult.getOrElse { emptyList() },
+                        feedStatusMessage = commentsResult.exceptionOrNull()?.message,
+                    )
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isFeedLoading = false,
+                        feedStatusMessage = error.message ?: "피드 글을 불러오지 못했습니다.",
+                    )
+                },
+            )
+        }
+    }
+
+    fun submitFeedComment() {
+        val authSession = uiState.authSession ?: run {
+            uiState = uiState.copy(feedStatusMessage = "먼저 로그인해 주세요.")
+            return
+        }
+        val postId = uiState.selectedFeedPostId ?: run {
+            uiState = uiState.copy(feedStatusMessage = "먼저 피드 글을 선택해 주세요.")
+            return
+        }
+        val content = uiState.feedCommentInput.trim()
+        if (content.isBlank()) {
+            uiState = uiState.copy(feedStatusMessage = "댓글 내용을 입력해 주세요.")
+            return
+        }
+
+        uiState = uiState.copy(
+            isFeedLoading = true,
+            feedStatusMessage = null,
+        )
+
+        viewModelScope.launch {
+            repository.createFeedComment(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                postId = postId,
+                content = content,
+            ).fold(
+                onSuccess = { comment ->
+                    uiState = uiState.copy(
+                        isFeedLoading = false,
+                        feedComments = uiState.feedComments + comment,
+                        feedCommentInput = "",
+                        feedStatusMessage = "댓글을 남겼습니다.",
+                    )
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isFeedLoading = false,
+                        feedStatusMessage = error.message ?: "댓글 작성에 실패했습니다.",
+                    )
+                },
+            )
+        }
+    }
+
+    fun recordFeedRead(
+        postId: String,
+        dwellSeconds: Int,
+        completed: Boolean,
+    ) {
+        val authSession = uiState.authSession ?: return
+        if (dwellSeconds <= 0 && !completed) {
+            return
+        }
+
+        viewModelScope.launch {
+            repository.recordFeedRead(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                postId = postId,
+                dwellSeconds = dwellSeconds,
+                completed = completed,
+                queryText = uiState.feedQueryInput,
+            ).onFailure { error ->
+                uiState = uiState.copy(
+                    feedStatusMessage = error.message ?: "읽기 기록 저장에 실패했습니다.",
+                )
+            }
+        }
+    }
+
+    fun loadChatRooms() {
+        val authSession = uiState.authSession ?: run {
+            uiState = uiState.copy(chatStatusMessage = "먼저 로그인해 주세요.")
+            return
+        }
+
+        uiState = uiState.copy(
+            isChatLoading = true,
+            chatStatusMessage = null,
+        )
+
+        viewModelScope.launch {
+            repository.listChatRooms(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+            ).fold(
+                onSuccess = { rooms ->
+                    val selectedRoomId = uiState.selectedChatRoomId
+                        ?.takeIf { selectedId -> rooms.any { it.id == selectedId } }
+                        ?: rooms.firstOrNull()?.id
+                    uiState = uiState.copy(
+                        isChatLoading = false,
+                        chatRooms = rooms,
+                        selectedChatRoomId = selectedRoomId,
+                    )
+                    if (selectedRoomId != null) {
+                        loadMessagesForChatRoom(selectedRoomId)
+                    } else {
+                        uiState = uiState.copy(chatMessages = emptyList())
+                    }
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isChatLoading = false,
+                        chatStatusMessage = error.message ?: "채팅방 목록을 불러오지 못했습니다.",
+                    )
+                },
+            )
+        }
+    }
+
+    fun startChatWithUser(otherUserId: String) {
+        val authSession = uiState.authSession ?: run {
+            uiState = uiState.copy(chatStatusMessage = "먼저 로그인해 주세요.")
+            return
+        }
+
+        uiState = uiState.copy(
+            isChatLoading = true,
+            chatStatusMessage = null,
+        )
+
+        viewModelScope.launch {
+            repository.createChatRoom(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                otherUserId = otherUserId,
+            ).fold(
+                onSuccess = { room ->
+                    val updatedRooms = listOf(room) + uiState.chatRooms.filterNot { it.id == room.id }
+                    uiState = uiState.copy(
+                        isChatLoading = false,
+                        chatRooms = updatedRooms,
+                        selectedChatRoomId = room.id,
+                        pendingChatNavigationRoomId = room.id,
+                    )
+                    loadMessagesForChatRoom(room.id)
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isChatLoading = false,
+                        chatStatusMessage = error.message ?: "채팅방을 준비하지 못했습니다.",
+                    )
+                },
+            )
+        }
+    }
+
+    fun selectChatRoom(roomId: String) {
+        uiState = uiState.copy(
+            selectedChatRoomId = roomId,
+            chatStatusMessage = null,
+        )
+        loadMessagesForChatRoom(roomId)
+    }
+
+    fun onChatMessageChanged(value: String) {
+        uiState = uiState.copy(
+            chatMessageInput = value,
+            chatStatusMessage = null,
+        )
+    }
+
+    fun sendChatMessage() {
+        val authSession = uiState.authSession ?: run {
+            uiState = uiState.copy(chatStatusMessage = "먼저 로그인해 주세요.")
+            return
+        }
+        val roomId = uiState.selectedChatRoomId ?: run {
+            uiState = uiState.copy(chatStatusMessage = "먼저 채팅방을 선택해 주세요.")
+            return
+        }
+        val content = uiState.chatMessageInput.trim()
+        if (content.isBlank()) {
+            uiState = uiState.copy(chatStatusMessage = "보낼 내용을 입력해 주세요.")
+            return
+        }
+
+        uiState = uiState.copy(
+            isChatLoading = true,
+            chatStatusMessage = null,
+        )
+
+        viewModelScope.launch {
+            repository.sendChatMessage(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                roomId = roomId,
+                content = content,
+            ).fold(
+                onSuccess = { message ->
+                    uiState = uiState.copy(
+                        isChatLoading = false,
+                        chatMessages = uiState.chatMessages + message,
+                        chatMessageInput = "",
+                    )
+                    loadChatRooms()
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isChatLoading = false,
+                        chatStatusMessage = error.message ?: "메시지 전송에 실패했습니다.",
+                    )
+                },
+            )
+        }
+    }
+
+    fun onPendingChatNavigationConsumed() {
+        uiState = uiState.copy(pendingChatNavigationRoomId = null)
+    }
+
     private fun restoreSession() {
         val storedSession = uiState.authSession
         if (storedSession == null) {
@@ -766,6 +1140,9 @@ class StoryVenueViewModel(
             val selectedSessionId = uiState.selectedSessionId
                 ?.takeIf { id -> sessions.any { it.id == id } }
                 ?: sessions.firstOrNull()?.id
+            val selectedBook = uiState.selectedBookId
+                ?.let { selectedId -> books.firstOrNull { it.id == selectedId } }
+                ?: books.firstOrNull()
 
             uiState = uiState.copy(
                 isAuthLoading = false,
@@ -773,8 +1150,8 @@ class StoryVenueViewModel(
                 isHomeLoading = false,
                 sessions = sessions,
                 books = books,
-                selectedBookId = books.firstOrNull()?.id,
-                compiledBook = books.firstOrNull(),
+                selectedBookId = selectedBook?.id,
+                compiledBook = selectedBook,
                 selectedSessionId = selectedSessionId,
                 homeMessage = sessionsResult.exceptionOrNull()?.message,
             )
@@ -849,6 +1226,31 @@ class StoryVenueViewModel(
                 onFailure = { error ->
                     uiState = uiState.copy(
                         chapterStatusMessage = error.message ?: "장 목록을 불러오지 못했습니다.",
+                    )
+                },
+            )
+        }
+    }
+
+    private fun loadMessagesForChatRoom(roomId: String) {
+        val authSession = uiState.authSession ?: return
+
+        viewModelScope.launch {
+            repository.listChatMessages(
+                baseUrl = uiState.serverBaseUrl,
+                accessToken = authSession.accessToken,
+                roomId = roomId,
+            ).fold(
+                onSuccess = { messages ->
+                    uiState = uiState.copy(
+                        chatMessages = messages,
+                        isChatLoading = false,
+                    )
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isChatLoading = false,
+                        chatStatusMessage = error.message ?: "채팅 내용을 불러오지 못했습니다.",
                     )
                 },
             )

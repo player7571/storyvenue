@@ -1,4 +1,6 @@
 from app.services.book_service import BookConfigurationError, BookService
+from app.services.chat_service import ChatConfigurationError, ChatService
+from app.services.feed_service import FeedConfigurationError, FeedService
 from fastapi import HTTPException, status
 
 from app.services.chapter_service import ChapterConfigurationError, ChapterService
@@ -73,6 +75,26 @@ def get_book_service() -> BookService:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Book service is not configured.",
+        ) from exc
+
+
+def get_feed_service() -> FeedService:
+    try:
+        return FeedService()
+    except FeedConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Feed service is not configured.",
+        ) from exc
+
+
+def get_chat_service() -> ChatService:
+    try:
+        return ChatService()
+    except ChatConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Chat service is not configured.",
         ) from exc
 
 

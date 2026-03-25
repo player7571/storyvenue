@@ -8,8 +8,14 @@ MVP 기준 핵심 테이블:
 - memory_items
 - chapter_drafts
 - autobiography_versions
+- feed_posts
+- feed_comments
+- feed_read_events
+- chat_rooms
+- chat_messages
 
 실제 적용용 SQL 은 [server/sql/mvp_schema.sql](/Users/player7571/storyvenue/server/sql/mvp_schema.sql) 에 있다.
+소셜 피드/채팅 확장 SQL 은 [server/sql/social_feed_schema.sql](/Users/player7571/storyvenue/server/sql/social_feed_schema.sql) 에 있다.
 현재 앱/서버 구현은 아래 컬럼을 전제로 동작한다.
 
 ## profiles
@@ -96,11 +102,85 @@ Columns:
 - chapter_ids: jsonb, not null, default `[]`
 - created_at: timestamptz, not null
 
+## feed_posts
+설명:
+- 저장된 자서전 버전을 공개 피드에 게시한 글
+- 추천 알고리즘이 사용할 AI 분석 결과를 함께 저장
+
+Columns:
+- id: uuid, primary key
+- book_id: uuid, not null, unique
+- user_id: uuid, not null
+- author_name: text, not null
+- title: text, not null
+- excerpt: text, not null
+- content: text, not null
+- summary: text, nullable
+- topics: jsonb, not null, default `[]`
+- emotions: jsonb, not null, default `[]`
+- experiences: jsonb, not null, default `[]`
+- visibility: text, default `public`
+- created_at: timestamptz, not null
+- updated_at: timestamptz, not null
+
+## feed_comments
+설명:
+- 피드 글에 달린 댓글
+
+Columns:
+- id: uuid, primary key
+- post_id: uuid, not null
+- user_id: uuid, not null
+- author_name: text, not null
+- content: text, not null
+- created_at: timestamptz, not null
+
+## feed_read_events
+설명:
+- 추천 알고리즘용 읽기 행동 로그
+- 체류 시간, 완독 여부, 검색어를 저장
+
+Columns:
+- id: uuid, primary key
+- post_id: uuid, not null
+- user_id: uuid, not null
+- dwell_seconds: integer, not null, default `0`
+- completed: boolean, not null, default `false`
+- query_text: text, nullable
+- created_at: timestamptz, not null
+
+## chat_rooms
+설명:
+- 사용자 간 1:1 채팅방
+
+Columns:
+- id: uuid, primary key
+- room_key: text, unique
+- member_a_id: uuid, not null
+- member_b_id: uuid, not null
+- created_at: timestamptz, not null
+
+## chat_messages
+설명:
+- 채팅방 메시지
+
+Columns:
+- id: uuid, primary key
+- room_id: uuid, not null
+- sender_id: uuid, not null
+- sender_name: text, not null
+- content: text, not null
+- created_at: timestamptz, not null
+
 ## RLS direction
 모든 사용자 데이터 테이블은 기본적으로 아래 정책을 따른다.
 - 인증된 사용자만 접근 가능
 - `user_id = auth.uid()` 인 데이터만 조회/수정 가능
 - `profiles` 는 `id = auth.uid()` 기준으로 조회/수정 가능
+- `feed_posts` 는 인증 사용자에게 공개 조회 가능하지만 작성자는 본인만 insert/update 가능
+- `feed_comments` 는 공개 피드 글에 대해 인증 사용자라면 조회 가능하고, 작성은 본인 댓글만 가능
+- `feed_read_events` 는 본인 로그만 조회/작성 가능
+- `chat_rooms`, `chat_messages` 는 해당 멤버만 조회/작성 가능
 
 ## Audio handling direction
 - 음성 원본 파일은 장기 보관하지 않는다.
