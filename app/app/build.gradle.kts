@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val storyVenueBaseUrl = providers.gradleProperty("storyvenueBaseUrl")
+    .orElse("http://10.0.2.2:8000")
+    .get()
+val escapedStoryVenueBaseUrl = storyVenueBaseUrl.replace("\"", "\\\"")
+
 android {
     namespace = "com.storyvenue.app"
     compileSdk = 34
@@ -15,6 +20,11 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "DEFAULT_SERVER_BASE_URL",
+            "\"$escapedStoryVenueBaseUrl\"",
+        )
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -40,6 +50,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 

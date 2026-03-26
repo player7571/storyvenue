@@ -1,0 +1,6 @@
+.DS_Store
+.env
+.generated-audio
+.venv
+__pycache__/
+*.pyc
