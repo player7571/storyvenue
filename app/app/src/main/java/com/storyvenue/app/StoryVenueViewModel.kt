@@ -16,7 +16,7 @@ private const val PREFS_NAME = "storyvenue_prefs"
 private const val KEY_SERVER_BASE_URL = "server_base_url"
 private const val KEY_AUTH_SESSION = "auth_session"
 private const val KEY_SELECTED_SESSION_ID = "selected_session_id"
-private const val DEFAULT_SERVER_BASE_URL = "http://10.0.2.2:8000"
+private val DEFAULT_SERVER_BASE_URL = BuildConfig.DEFAULT_SERVER_BASE_URL
 
 enum class AuthMode {
     SignIn,
