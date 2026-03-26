@@ -115,13 +115,13 @@ import com.storyvenue.app.voice.VoiceRecorder
 import com.storyvenue.app.voice.VoiceRecordingFileStore
 
 private val NavyDark = Color(0xFF03192E)
-private val BeigeLight = Color(0xFFFCF9F1)
-private val BeigeMuted = Color(0xFFF6F3EB)
-private val GoldAccent = Color(0xFF725B35)
-private val GoldSoft = Color(0xFFDCC9A7)
-private val TextGray = Color(0xFF4A4A4A)
+private val BeigeLight = Color(0xFFFFFCF6)
+private val BeigeMuted = Color(0xFFF4EFE3)
+private val GoldAccent = Color(0xFF6A5630)
+private val GoldSoft = Color(0xFFD9CCAC)
+private val TextGray = Color(0xFF333333)
 private val ErrorRose = Color(0xFF8A2D2D)
-private val NewsreaderFamily = FontFamily.Serif
+private val NewsreaderFamily = FontFamily.SansSerif
 
 private enum class PendingRecordingAction {
     Start,
@@ -164,27 +164,53 @@ private fun StoryVenueTheme(content: @Composable () -> Unit) {
         headlineLarge = MaterialTheme.typography.headlineLarge.copy(
             fontFamily = NewsreaderFamily,
             fontWeight = FontWeight.Bold,
+            fontSize = 34.sp,
+            lineHeight = 42.sp,
         ),
         headlineMedium = MaterialTheme.typography.headlineMedium.copy(
             fontFamily = NewsreaderFamily,
             fontWeight = FontWeight.Bold,
+            fontSize = 30.sp,
+            lineHeight = 38.sp,
         ),
         headlineSmall = MaterialTheme.typography.headlineSmall.copy(
             fontFamily = NewsreaderFamily,
             fontWeight = FontWeight.Bold,
+            fontSize = 28.sp,
+            lineHeight = 36.sp,
         ),
         titleLarge = MaterialTheme.typography.titleLarge.copy(
             fontFamily = NewsreaderFamily,
             fontWeight = FontWeight.Bold,
+            fontSize = 24.sp,
+            lineHeight = 32.sp,
         ),
         titleMedium = MaterialTheme.typography.titleMedium.copy(
             fontWeight = FontWeight.SemiBold,
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
         ),
         bodyLarge = MaterialTheme.typography.bodyLarge.copy(
-            lineHeight = 26.sp,
+            fontSize = 19.sp,
+            lineHeight = 30.sp,
         ),
         bodyMedium = MaterialTheme.typography.bodyMedium.copy(
-            lineHeight = 22.sp,
+            fontSize = 17.sp,
+            lineHeight = 28.sp,
+        ),
+        labelLarge = MaterialTheme.typography.labelLarge.copy(
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
+        labelMedium = MaterialTheme.typography.labelMedium.copy(
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
+        labelSmall = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
         ),
     )
 
@@ -225,11 +251,16 @@ private fun StoryVenueScaffold(
     val bottomNavigationScreen = navSelectionForScreen(currentScreen)
     val showBackButton = currentScreen == StoryVenueScreen.VoiceInterview ||
         currentScreen == StoryVenueScreen.BookPreview ||
-        currentScreen == StoryVenueScreen.FeedPost
-    val showBottomBar = uiState.authSession != null &&
-        currentScreen != StoryVenueScreen.Login &&
-        currentScreen != StoryVenueScreen.VoiceInterview &&
-        currentScreen != StoryVenueScreen.FeedPost
+        currentScreen == StoryVenueScreen.FeedPost ||
+        currentScreen == StoryVenueScreen.Chat
+    val showBottomBar = uiState.authSession != null && when (currentScreen) {
+        StoryVenueScreen.Home,
+        StoryVenueScreen.VoiceInterview,
+        StoryVenueScreen.Draft,
+        StoryVenueScreen.Feed,
+        -> true
+        else -> false
+    }
 
     LaunchedEffect(uiState.authSession, uiState.isRestoringSession) {
         if (uiState.isRestoringSession) {
@@ -279,19 +310,11 @@ private fun StoryVenueScaffold(
                         }
                     },
                     title = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "StoryVenue",
-                                style = MaterialTheme.typography.labelSmall,
-                                letterSpacing = 1.4.sp,
-                                color = GoldAccent,
-                            )
-                            Text(
-                                text = currentScreen.title,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontStyle = FontStyle.Italic,
-                            )
-                        }
+                        Text(
+                            text = currentScreen.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = NavyDark,
+                        )
                     },
                 )
             }
@@ -304,9 +327,9 @@ private fun StoryVenueScaffold(
                 ) {
                     listOf(
                         StoryVenueScreen.Home,
+                        StoryVenueScreen.VoiceInterview,
                         StoryVenueScreen.Draft,
                         StoryVenueScreen.Feed,
-                        StoryVenueScreen.Chat,
                     ).forEach { screen ->
                         NavigationBarItem(
                             selected = bottomNavigationScreen == screen,
@@ -326,7 +349,7 @@ private fun StoryVenueScaffold(
                             label = {
                                 Text(
                                     text = screen.title,
-                                    fontSize = 11.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
                             },
@@ -493,9 +516,9 @@ private fun LoginScreen(
 ) {
     ScreenContainer {
         HeroCard(
-            eyebrow = "VOICE-FIRST MEMORY",
-            title = "편하게 말씀하시면 이야기가 쌓입니다",
-            body = "이메일로 로그인하거나 가입한 뒤, 같은 세션에서 음성 인터뷰와 자서전 초안 작성을 이어갈 수 있습니다.",
+            eyebrow = "로그인",
+            title = "편하게 시작해 보세요",
+            body = "이메일과 비밀번호를 입력하면 바로 이야기를 시작할 수 있습니다.",
         )
         Spacer(modifier = Modifier.height(20.dp))
         SectionHeader(title = "접속 정보")
@@ -507,23 +530,17 @@ private fun LoginScreen(
             singleLine = true,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "로그인 모드",
-                onClick = { onAuthModeChanged(AuthMode.SignIn) },
-                modifier = Modifier.weight(1f),
-                enabled = uiState.authMode != AuthMode.SignIn,
-            )
-            OutlinedActionButton(
-                label = "회원가입 모드",
-                onClick = { onAuthModeChanged(AuthMode.SignUp) },
-                modifier = Modifier.weight(1f),
-                enabled = uiState.authMode != AuthMode.SignUp,
-            )
-        }
+        OutlinedActionButton(
+            label = "로그인",
+            onClick = { onAuthModeChanged(AuthMode.SignIn) },
+            enabled = uiState.authMode != AuthMode.SignIn,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "회원가입",
+            onClick = { onAuthModeChanged(AuthMode.SignUp) },
+            enabled = uiState.authMode != AuthMode.SignUp,
+        )
         Spacer(modifier = Modifier.height(12.dp))
         StoryTextField(
             value = uiState.email,
@@ -589,11 +606,11 @@ private fun HomeScreen(
 
     ScreenContainer {
         HeroCard(
-            eyebrow = "TODAY'S PROMPT",
-            title = selectedSession?.title ?: "오늘의 이야기를 시작해 보세요",
-            body = selectedSession?.theme?.let { "현재 선택된 주제: $it" }
-                ?: "짧은 제목과 주제를 정한 뒤 바로 음성 인터뷰를 시작할 수 있습니다.",
-            actionLabel = if (selectedSession != null) "음성 인터뷰 열기" else null,
+            eyebrow = "홈",
+            title = selectedSession?.title ?: "오늘의 인터뷰를 준비해 보세요",
+            body = selectedSession?.theme?.let { "선택한 주제는 $it 입니다." }
+                ?: "세션 제목을 적고 큰 버튼을 눌러 시작하면 됩니다.",
+            actionLabel = if (selectedSession != null) "음성 인터뷰 시작" else null,
             onAction = if (selectedSession != null) onOpenVoiceInterview else null,
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -602,40 +619,12 @@ private fun HomeScreen(
             content = uiState.authSession?.email?.let { "$it 로 로그인되어 있습니다." }
                 ?: "로그인 정보가 없습니다.",
         )
-        Spacer(modifier = Modifier.height(12.dp))
-        StoryTextField(
-            value = uiState.serverBaseUrl,
-            onValueChange = onServerBaseUrlChanged,
-            label = "서버 주소",
-            singleLine = true,
-        )
         Spacer(modifier = Modifier.height(16.dp))
         SectionHeader(title = "새 인터뷰 세션 만들기")
         NoticeCard(
-            title = "권장 방식",
-            content = "큰 제목 하나와 간단한 주제를 적으면 나중에 초안 생성과 책 정리에 유리합니다.",
+            title = "간단히 입력해 주세요",
+            content = "세션 제목과 주제를 짧게 적으면 됩니다. 예: 어린 시절, 가족, 일과 삶",
         )
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            ThemeSuggestionButton(
-                label = "어린 시절",
-                onClick = { onNewSessionThemeChanged("어린 시절") },
-                modifier = Modifier.weight(1f),
-            )
-            ThemeSuggestionButton(
-                label = "가족",
-                onClick = { onNewSessionThemeChanged("가족") },
-                modifier = Modifier.weight(1f),
-            )
-            ThemeSuggestionButton(
-                label = "일과 삶",
-                onClick = { onNewSessionThemeChanged("일과 삶") },
-                modifier = Modifier.weight(1f),
-            )
-        }
         Spacer(modifier = Modifier.height(12.dp))
         StoryTextField(
             value = uiState.newSessionTitle,
@@ -683,39 +672,46 @@ private fun HomeScreen(
         }
         Spacer(modifier = Modifier.height(24.dp))
         SectionHeader(title = "다음 작업")
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "장 초안 보기",
-                onClick = onOpenDraft,
-                modifier = Modifier.weight(1f),
-                enabled = uiState.selectedSessionId != null,
-            )
-            OutlinedActionButton(
-                label = "책 미리보기",
-                onClick = onOpenBookPreview,
-                modifier = Modifier.weight(1f),
-                enabled = uiState.chapters.isNotEmpty() || uiState.books.isNotEmpty(),
-            )
-        }
+        PrimaryActionButton(
+            label = "음성 인터뷰 시작",
+            onClick = onOpenVoiceInterview,
+            enabled = uiState.selectedSessionId != null,
+        )
         Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "공감 피드",
-                onClick = onOpenFeed,
-                modifier = Modifier.weight(1f),
-            )
-            OutlinedActionButton(
-                label = "로그아웃",
-                onClick = onSignOut,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        OutlinedActionButton(
+            label = "장 초안 보기",
+            onClick = onOpenDraft,
+            enabled = uiState.selectedSessionId != null,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "책 미리보기",
+            onClick = onOpenBookPreview,
+            enabled = uiState.chapters.isNotEmpty() || uiState.books.isNotEmpty(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "공감 피드",
+            onClick = onOpenFeed,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "로그아웃",
+            onClick = onSignOut,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        SectionHeader(title = "테스트용 설정")
+        NoticeCard(
+            title = "서버 주소",
+            content = "테스트 중일 때만 바꾸면 됩니다.",
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        StoryTextField(
+            value = uiState.serverBaseUrl,
+            onValueChange = onServerBaseUrlChanged,
+            label = "서버 주소",
+            singleLine = true,
+        )
     }
 }
 
@@ -864,26 +860,21 @@ private fun VoiceInterviewScreen(
         }
 
         HeroCard(
-            eyebrow = "VOICE INTERVIEW",
-            title = selectedSession.title,
+            eyebrow = "음성 인터뷰",
+            title = "AI 질문",
             body = uiState.lastAssistantQuestion,
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Row(
+        MetaPill(
+            label = "현재 상태",
+            value = voicePhaseLabel(uiState.phase),
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            MetaPill(
-                label = "현재 상태",
-                value = voicePhaseLabel(uiState.phase),
-                modifier = Modifier.weight(1f),
-            )
-            MetaPill(
-                label = "오류 횟수",
-                value = uiState.consecutiveVoiceFailures.toString(),
-                modifier = Modifier.weight(1f),
-            )
-        }
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        NoticeCard(
+            title = "현재 세션",
+            content = selectedSession.title,
+        )
         Spacer(modifier = Modifier.height(20.dp))
         VoiceRecorderCard(
             phase = uiState.phase,
@@ -893,23 +884,17 @@ private fun VoiceInterviewScreen(
             isListening = isListening,
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "다시 듣기",
-                onClick = onRepeatLastQuestion,
-                modifier = Modifier.weight(1f),
-                enabled = !isListening && !isBusy,
-            )
-            OutlinedActionButton(
-                label = "다시 말하기",
-                onClick = onRetrySpeech,
-                modifier = Modifier.weight(1f),
-                enabled = !isBusy,
-            )
-        }
+        OutlinedActionButton(
+            label = "AI 질문 다시 듣기",
+            onClick = onRepeatLastQuestion,
+            enabled = !isListening && !isBusy,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "내 답변 다시 말하기",
+            onClick = onRetrySpeech,
+            enabled = !isBusy,
+        )
         if (isBusy) {
             Spacer(modifier = Modifier.height(12.dp))
             LoadingPlaceholder(message = uiState.helperText)
@@ -986,9 +971,9 @@ private fun DraftScreen(
         }
 
         HeroCard(
-            eyebrow = "CHAPTER STUDIO",
+            eyebrow = "장 초안",
             title = selectedSession.title,
-            body = "현재 세션에서 자동 추출된 기억 항목을 바탕으로 장 초안을 만듭니다.",
+            body = "음성 인터뷰 내용을 바탕으로 장 초안을 만듭니다.",
         )
         Spacer(modifier = Modifier.height(16.dp))
         StoryTextField(
@@ -1052,23 +1037,17 @@ private fun DraftScreen(
                 label = "수정 요청",
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedActionButton(
-                    label = "수정 요청",
-                    onClick = onReviseChapter,
-                    modifier = Modifier.weight(1f),
-                    enabled = !uiState.isDraftLoading,
-                )
-                OutlinedActionButton(
-                    label = "다시 생성",
-                    onClick = onRegenerateChapter,
-                    modifier = Modifier.weight(1f),
-                    enabled = !uiState.isDraftLoading,
-                )
-            }
+            OutlinedActionButton(
+                label = "수정 요청",
+                onClick = onReviseChapter,
+                enabled = !uiState.isDraftLoading,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedActionButton(
+                label = "다시 생성",
+                onClick = onRegenerateChapter,
+                enabled = !uiState.isDraftLoading,
+            )
         }
         Spacer(modifier = Modifier.height(16.dp))
         PrimaryActionButton(
@@ -1103,9 +1082,9 @@ private fun BookPreviewScreen(
         }
 
         HeroCard(
-            eyebrow = "BOOK PREVIEW",
+            eyebrow = "책 미리보기",
             title = uiState.bookTitleInput,
-            body = "장 순서를 확인한 뒤 최종 자서전 버전으로 저장합니다.",
+            body = "장 순서를 확인한 뒤 최종 자서전으로 저장합니다.",
         )
         Spacer(modifier = Modifier.height(16.dp))
         StoryTextField(
@@ -1166,21 +1145,15 @@ private fun BookPreviewScreen(
                 content = book.content,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedActionButton(
-                    label = "피드에 올리기",
-                    onClick = onPublishToFeed,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedActionButton(
-                    label = "피드 보기",
-                    onClick = onOpenFeed,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            OutlinedActionButton(
+                label = "피드에 올리기",
+                onClick = onPublishToFeed,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedActionButton(
+                label = "피드 보기",
+                onClick = onOpenFeed,
+            )
         }
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedActionButton(
@@ -1208,9 +1181,9 @@ private fun FeedScreen(
 
     ScreenContainer {
         HeroCard(
-            eyebrow = "COMMUNITY FEED",
-            title = "비슷한 경험을 가진 사람들과 연결됩니다",
-            body = "자서전을 올리고, 추천 글을 읽고, 댓글과 채팅으로 대화를 이어갈 수 있습니다.",
+            eyebrow = "공감 피드",
+            title = "비슷한 경험을 가진 사람들을 만나 보세요",
+            body = "글을 읽고 댓글을 남기거나 채팅을 시작할 수 있습니다.",
         )
         Spacer(modifier = Modifier.height(16.dp))
         if (selectedBook != null) {
@@ -1232,22 +1205,16 @@ private fun FeedScreen(
             label = "찾고 싶은 주제나 경험",
         )
         Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "추천 새로고침",
-                onClick = onRefreshFeed,
-                modifier = Modifier.weight(1f),
-                enabled = !uiState.isFeedLoading,
-            )
-            OutlinedActionButton(
-                label = "채팅 보기",
-                onClick = onOpenChat,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        OutlinedActionButton(
+            label = "추천 다시 불러오기",
+            onClick = onRefreshFeed,
+            enabled = !uiState.isFeedLoading,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = "채팅 보기",
+            onClick = onOpenChat,
+        )
         if (uiState.isFeedLoading) {
             Spacer(modifier = Modifier.height(12.dp))
             LoadingPlaceholder(message = "추천 피드를 불러오는 중입니다.")
@@ -1361,7 +1328,7 @@ private fun FeedPostScreen(
 
     ScreenContainer {
         HeroCard(
-            eyebrow = "AUTOBIOGRAPHY",
+            eyebrow = "자서전",
             title = post.title,
             body = "${post.authorName} 님의 이야기",
         )
@@ -1383,22 +1350,16 @@ private fun FeedPostScreen(
             NoticeCard(title = "안내", content = message)
         }
         Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedActionButton(
-                label = "끝까지 읽었어요",
-                onClick = onMarkCompleted,
-                modifier = Modifier.weight(1f),
-            )
-            OutlinedActionButton(
-                label = if (canStartChat) "이 작성자와 채팅" else "내 글입니다",
-                onClick = onStartChat,
-                modifier = Modifier.weight(1f),
-                enabled = canStartChat,
-            )
-        }
+        OutlinedActionButton(
+            label = "끝까지 읽었어요",
+            onClick = onMarkCompleted,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedActionButton(
+            label = if (canStartChat) "이 작성자와 채팅" else "내 글입니다",
+            onClick = onStartChat,
+            enabled = canStartChat,
+        )
         Spacer(modifier = Modifier.height(24.dp))
         SectionHeader(title = "댓글")
         if (uiState.feedComments.isEmpty()) {
@@ -1446,9 +1407,9 @@ private fun ChatScreen(
 
     ScreenContainer {
         HeroCard(
-            eyebrow = "DIRECT CHAT",
+            eyebrow = "채팅",
             title = selectedRoom?.otherUserName ?: "대화를 시작해 보세요",
-            body = "피드에서 연결된 사람과 1:1 대화를 이어갈 수 있습니다.",
+            body = "아래에서 대화방을 고르고 큰 버튼으로 메시지를 보낼 수 있습니다.",
         )
         if (uiState.isChatLoading) {
             Spacer(modifier = Modifier.height(12.dp))
@@ -1526,7 +1487,7 @@ private fun ScreenContainer(content: @Composable ColumnScope.() -> Unit) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
+            .padding(horizontal = 24.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.Top,
     ) {
         content()
@@ -1544,30 +1505,30 @@ private fun HeroCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NavyDark),
-        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(2.dp, GoldSoft),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
             modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
                 text = eyebrow,
                 style = MaterialTheme.typography.labelSmall,
-                letterSpacing = 1.6.sp,
-                color = GoldSoft,
+                letterSpacing = 0.6.sp,
+                color = GoldAccent,
             )
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
-                fontStyle = FontStyle.Italic,
+                color = NavyDark,
             )
             Text(
                 text = body,
                 style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(alpha = 0.88f),
+                color = TextGray,
             )
             if (actionLabel != null && onAction != null) {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1575,13 +1536,17 @@ private fun HeroCard(
                     onClick = onAction,
                     enabled = actionEnabled,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = BeigeLight,
-                        contentColor = NavyDark,
+                        containerColor = NavyDark,
+                        contentColor = Color.White,
                     ),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
-                    Text(text = actionLabel, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = actionLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
         }
@@ -1609,13 +1574,13 @@ private fun VoiceRecorderCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = BeigeMuted),
-        shape = RoundedCornerShape(28.dp),
-        border = BorderStroke(1.dp, GoldSoft),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(2.dp, GoldSoft),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
+                .padding(horizontal = 20.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
@@ -1628,7 +1593,7 @@ private fun VoiceRecorderCard(
             Box(contentAlignment = Alignment.Center) {
                 Surface(
                     modifier = Modifier
-                        .size(220.dp)
+                        .size(240.dp)
                         .scale(pulseScale),
                     shape = CircleShape,
                     color = NavyDark.copy(alpha = 0.05f),
@@ -1637,7 +1602,7 @@ private fun VoiceRecorderCard(
                 Button(
                     onClick = onMicrophoneClick,
                     enabled = enabled,
-                    modifier = Modifier.size(132.dp),
+                    modifier = Modifier.size(156.dp),
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = NavyDark,
@@ -1653,14 +1618,15 @@ private fun VoiceRecorderCard(
                             icon = Icons.Filled.SettingsVoice,
                             contentDescription = "마이크",
                             tint = Color.White,
-                            modifier = Modifier.size(42.dp),
+                            modifier = Modifier.size(52.dp),
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = voiceMicButtonLabel(phase),
                             textAlign = TextAlign.Center,
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp,
+                            fontSize = 16.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Bold,
                         )
                     }
                 }
@@ -1683,7 +1649,7 @@ private fun SectionHeader(title: String) {
         style = MaterialTheme.typography.titleLarge,
         color = NavyDark,
     )
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(14.dp))
 }
 
 @Composable
@@ -1693,13 +1659,13 @@ private fun NoticeCard(
 ) {
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, GoldSoft),
+        border = BorderStroke(2.dp, GoldSoft),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
                 text = title,
@@ -1725,10 +1691,10 @@ private fun MetaPill(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
         color = BeigeMuted,
-        border = BorderStroke(1.dp, GoldSoft),
+        border = BorderStroke(2.dp, GoldSoft),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
@@ -1778,7 +1744,7 @@ private fun PrimaryActionButton(
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp),
+            .heightIn(min = 68.dp),
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = NavyDark,
@@ -1786,7 +1752,7 @@ private fun PrimaryActionButton(
             disabledContainerColor = NavyDark.copy(alpha = 0.45f),
         ),
     ) {
-        Text(text = label, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(text = label, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1800,13 +1766,15 @@ private fun OutlinedActionButton(
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 56.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 68.dp),
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, GoldSoft),
+        border = BorderStroke(2.dp, GoldSoft),
     ) {
         Text(
             text = label,
-            fontSize = 16.sp,
+            fontSize = 19.sp,
             fontWeight = FontWeight.SemiBold,
             color = NavyDark,
             textAlign = TextAlign.Center,
@@ -1822,10 +1790,10 @@ private fun OutlinedIconButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = Modifier.size(44.dp),
+        modifier = Modifier.size(52.dp),
         contentPadding = PaddingValues(0.dp),
         shape = CircleShape,
-        border = BorderStroke(1.dp, GoldSoft),
+        border = BorderStroke(2.dp, GoldSoft),
     ) {
         IconOrNull(
             icon = icon,
@@ -1850,11 +1818,14 @@ private fun StoryTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 68.dp),
         enabled = enabled,
         singleLine = singleLine,
         keyboardOptions = keyboardOptions,
         visualTransformation = visualTransformation,
+        textStyle = MaterialTheme.typography.bodyLarge,
         shape = RoundedCornerShape(18.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = GoldAccent,

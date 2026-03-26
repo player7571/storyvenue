@@ -1,5 +1,45 @@
 # Status.md
 
+## 2026-03-25 senior-friendly UI simplification
+
+- 완료한 내용
+  - 노인 사용자가 더 쉽게 쓸 수 있도록 앱 UI를 큰 글자, 큰 버튼, 짧은 한국어 문장 중심으로 단순화했다.
+  - 상단 제목과 하단 내비게이션을 더 단순한 구조로 정리했고, 홈/음성 인터뷰/초안/책 미리보기/피드/채팅 화면의 가로 배치를 줄였다.
+  - 홈 화면에서 핵심 작업 버튼을 세로로 크게 배치하고, 음성 인터뷰 화면의 상태 표시와 마이크 버튼을 더 크게 조정했다.
+  - 장식적인 영문 카피와 이탤릭 위주 표현을 줄이고, 접근성에 맞는 한국어 안내 문구로 바꿨다.
+- 남은 문제
+  - 실제 고령 사용자 대상 사용성 테스트는 아직 하지 못했다.
+  - 서버 주소 입력은 테스트용이어서 production 기본 서버 주소가 정해지면 더 숨기거나 제거하는 편이 좋다.
+- 다음 작업
+  - 실기기에서 마이크 권한, 음성 인터뷰, 다시 듣기/다시 말하기 흐름 확인
+  - 고령 사용자 관점에서 글자 크기와 버튼 문구 피드백 반영
+- 검증 방법
+  - `cd app && ANDROID_HOME=/Users/player7571/Library/Android/sdk ANDROID_SDK_ROOT=/Users/player7571/Library/Android/sdk ./gradlew :app:compileDebugKotlin`
+  - `cd app && ANDROID_HOME=/Users/player7571/Library/Android/sdk ANDROID_SDK_ROOT=/Users/player7571/Library/Android/sdk ./gradlew :app:installDebug`
+  - 두 명령 모두 성공했고 `Pixel_8_API_35_2` 에뮬레이터에 설치까지 완료했다.
+- 실기기 테스트 필요 여부
+  - 필요
+  - 
+## 2026-03-25 UI wiring recovery
+
+- 완료한 내용
+  - `app/app/src/main/java/com/storyvenue/app/ui/StoryVenueApp.kt` 를 데모 전용 화면에서 실제 `ViewModel`/`NavHost` 기반 화면으로 다시 연결했다.
+  - 로그인, 홈, 음성 인터뷰, 장 초안, 책 미리보기, 피드, 피드 상세, 채팅 화면이 다시 백엔드 상태와 액션을 사용하도록 복구했다.
+  - 새 UI 톤을 유지하기 위해 색상/카드/버튼 스타일과 상단/하단 내비게이션을 함께 정리했다.
+  - 확장 아이콘 사용을 위해 `app/app/build.gradle.kts` 에 `material-icons-extended` 의존성을 추가했다.
+- 남은 문제
+  - `installDebug` 는 연결된 기기가 없어서 설치까지는 확인하지 못했다.
+  - 실제 기기 또는 에뮬레이터에서 마이크 권한 흐름과 음성 인터뷰 3턴 이상 검증이 아직 필요하다.
+- 다음 작업
+  - 연결된 안드로이드 기기에서 `:app:installDebug` 재실행
+  - 로그인 -> 세션 생성 -> 음성 인터뷰 -> 장 생성 -> 책 저장 -> 피드/채팅 흐름 점검
+- 검증 방법
+  - `cd app && ANDROID_HOME=/Users/player7571/Library/Android/sdk ANDROID_SDK_ROOT=/Users/player7571/Library/Android/sdk ./gradlew :app:compileDebugKotlin`
+  - 위 명령은 성공했다.
+  - `:app:installDebug` 는 `No connected devices!` 로 실패했다.
+- 실기기 테스트 필요 여부
+  - 필요
+
 ## 2026-03-26 README rewrite for existing Supabase + Docker
 
 - 완료한 내용
@@ -38,25 +78,6 @@
   - 필요 없음
   - 문서 작업
 
-## 2026-03-25 UI wiring recovery
-
-- 완료한 내용
-  - `app/app/src/main/java/com/storyvenue/app/ui/StoryVenueApp.kt` 를 데모 전용 화면에서 실제 `ViewModel`/`NavHost` 기반 화면으로 다시 연결했다.
-  - 로그인, 홈, 음성 인터뷰, 장 초안, 책 미리보기, 피드, 피드 상세, 채팅 화면이 다시 백엔드 상태와 액션을 사용하도록 복구했다.
-  - 새 UI 톤을 유지하기 위해 색상/카드/버튼 스타일과 상단/하단 내비게이션을 함께 정리했다.
-  - 확장 아이콘 사용을 위해 `app/app/build.gradle.kts` 에 `material-icons-extended` 의존성을 추가했다.
-- 남은 문제
-  - `installDebug` 는 연결된 기기가 없어서 설치까지는 확인하지 못했다.
-  - 실제 기기 또는 에뮬레이터에서 마이크 권한 흐름과 음성 인터뷰 3턴 이상 검증이 아직 필요하다.
-- 다음 작업
-  - 연결된 안드로이드 기기에서 `:app:installDebug` 재실행
-  - 로그인 -> 세션 생성 -> 음성 인터뷰 -> 장 생성 -> 책 저장 -> 피드/채팅 흐름 점검
-- 검증 방법
-  - `cd app && ANDROID_HOME=/Users/player7571/Library/Android/sdk ANDROID_SDK_ROOT=/Users/player7571/Library/Android/sdk ./gradlew :app:compileDebugKotlin`
-  - 위 명령은 성공했다.
-  - `:app:installDebug` 는 `No connected devices!` 로 실패했다.
-- 실기기 테스트 필요 여부
-  - 필요
 
 ## Current project status
 현재 저장소는 MVP 핵심 흐름 코드가 연결된 상태다.
